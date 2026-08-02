@@ -40,6 +40,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The Apple Silicon runner arrives with no usable headroom: `hdiutil`
+      # failed with "No space left on device" while building the .dmg, five
+      # seconds after df had reported 37Gi free on the same volume. Nothing
+      # writes 37Gi in five seconds — the figure the image reports is not space
+      # you can actually write to, and deleting build intermediates *during* the
+      # job (which is what the previous attempt at this did) gives none of it
+      # back. So the space has to be reclaimed up front, before anything is
+      # built, from things a Tauri desktop build never touches: the spare Xcodes
+      # and the iOS simulator runtimes are tens of GB of iOS tooling.
+      #
+      # Never fatal. A runner that comes up without these directories, or that
+      # refuses the delete, is not a reason to fail a release build — the df
+      # lines are here so the next disk failure can be read off the log instead
+      # of guessed at.
+      - name: Free disk space (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set +e
+          echo "== disk before"; df -h /Users/runner
+          # Keep the Xcode the toolchain is actually pointed at. If it points at
+          # the CommandLineTools instead, keep the newest Xcode anyway rather
+          # than deleting every SDK on the box.
+          KEEP="$(xcode-select -p 2>/dev/null | sed -E 's#(/Applications/Xcode[^/]*\.app).*#\1#')"
+          case "$KEEP" in
+            /Applications/Xcode*.app) ;;
+            *) KEEP="$(ls -d /Applications/Xcode*.app 2>/dev/null | tail -1)" ;;
+          esac
+          echo "keeping ${KEEP:-<none — no Xcode installed>}"
+          for app in /Applications/Xcode*.app; do
+            if [ -e "$app" ] && [ "$app" != "$KEEP" ]; then
+              echo "removing $app"
+              sudo rm -rf "$app"
+            fi
+          done
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+          sudo rm -rf "$HOME/Library/Developer/CoreSimulator"
+          sudo rm -rf "$HOME/Library/Developer/Xcode/iOS DeviceSupport"
+          echo "== disk after"; df -h /Users/runner
+          exit 0
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
