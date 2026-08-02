@@ -58,12 +58,14 @@ esac
 DMG="${BUNDLE_DIR}/dmg/Annona_${VERSION}_${ARCH}.dmg"
 mkdir -p "${BUNDLE_DIR}/dmg"
 
-# `hdiutil create` failed on the Apple Silicon CI runner with "No space left on
-# device": between the Rust target directory, the PyInstaller work tree and a
-# second copy of the app, the disk ran out. None of that intermediate output is
-# needed once the bundle exists, so it goes first. This is also why the app is
-# *moved* into the staging folder rather than copied — on one volume that costs
-# nothing, and it halves the peak.
+# None of the intermediate build output is needed once the bundle exists, so it
+# goes before the image is built. This is also why the app is *moved* into the
+# staging folder rather than copied — on one volume that costs nothing, and it
+# halves the peak.
+#
+# This is housekeeping, not the fix for anything: "No space left on device" from
+# `hdiutil` below was read as a full disk and it never was one. The same failure
+# reproduced with 124Gi free on the volume this line prints.
 echo "→ freeing build intermediates"
 rm -rf build/work dist-sidecar \
        "ui/src-tauri/target/${TARGET}/release/incremental" \
@@ -79,7 +81,27 @@ ln -s /Applications "$STAGE/Applications"
 
 rm -f "$DMG"
 echo "→ building $DMG"
-hdiutil create -volname "Annona" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+
+# `hdiutil create -srcfolder ... -format UDZO` — one call, no size, no -fs —
+# fails on the Apple Silicon runner with "No space left on device". The message
+# is about the image, not the machine: left to size an APFS image on its own,
+# hdiutil allocates a container the copy then does not fit into. It reproduced
+# with 124Gi free on the volume, always ~5s in, which is the copy hitting the
+# end of the image and nothing else.
+#
+# So: size it explicitly from the staged content with room to spare, on HFS+,
+# read/write first, and compress in a second pass. This is what create-dmg does
+# and what Tauri's own bundle_dmg.sh did on this same runner when it produced a
+# working 93MB dmg — the step below is the only part of that path this script
+# had dropped.
+SIZE_MB=$(( $(du -sm "$STAGE" | cut -f1) + 200 ))
+RW_DMG="${STAGE_ROOT}/rw.dmg"
+echo "→ staging ${SIZE_MB}MB read/write image for $(du -sh "$STAGE" | cut -f1) of content"
+hdiutil create -volname "Annona" -srcfolder "$STAGE" \
+               -fs HFS+ -fsargs "-c c=64,a=16,e=16" \
+               -format UDRW -size "${SIZE_MB}m" -ov "$RW_DMG"
+hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -ov -o "$DMG"
+rm -f "$RW_DMG"
 
 # Put the bundle back where it was: the `app` bundle is a release asset in its
 # own right on some platforms, and a step that leaves the tree different from
