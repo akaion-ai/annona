@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Annona",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.akaion.annona",
   "build": {
     "beforeBuildCommand": "npm run build",
@@ -68,7 +68,7 @@
         "https://github.com/akaion-ai/annona/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "PLACEHOLDER_PUBLIC_KEY_GENERATED_BY_TAURI_SIGNER"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1NTNERDg0MTRDODMzMTUKUldRVk04Z1VoTjFUUmJtZWMrbjVuS1N5d0llUW9aRTREOG9qZGRKbk50Y0dLcHRsZ2xhUFB3Q2QK"
     }
   }
 }
