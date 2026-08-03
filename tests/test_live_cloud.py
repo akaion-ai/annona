@@ -92,6 +92,23 @@ class TestContract:
         )
 
 
+def _delete_thought(cot_url: str, message_id: str) -> None:
+    """Remove a Thought this test wrote. Best-effort, never raises."""
+    try:
+        response = httpx.delete(
+            f"{cot_url}/api/v1/cloud/messages/{message_id}",
+            headers={"Authorization": f"Bearer {os.environ['AKAION_LIVE_TOKEN']}"},
+            timeout=TIMEOUT,
+        )
+        if response.status_code != 200:
+            print(
+                f"\n[live] could not delete test thought {message_id}: "
+                f"HTTP {response.status_code} — remove it by hand"
+            )
+    except Exception as exc:  # noqa: BLE001 - cleanup must not fail the test
+        print(f"\n[live] could not delete test thought {message_id}: {exc} — remove it by hand")
+
+
 class TestAuthenticated:
     """Requires a real Firebase ID token in AKAION_LIVE_TOKEN."""
 
@@ -106,3 +123,59 @@ class TestAuthenticated:
         client = MainBackendClient(api_key=os.environ["AKAION_LIVE_TOKEN"])
 
         assert client.verify_auth() is True
+
+    def test_a_note_really_reaches_the_cloud(self, tmp_path, monkeypatch):
+        """The one check the hermetic suite cannot make: a real round trip.
+
+        `tests/test_e2e_operational.py` proves the chain against a socket we
+        control, which catches every wiring mistake except the one that matters
+        on launch day — the deployed COT rejecting a payload our fake accepts.
+
+        **This writes a real Thought** into the account the token belongs to,
+        and deletes it again in a `finally` block. A live test that leaves
+        litter behind is one people stop running: after a dozen runs the
+        operator's Second Brain is full of "Annona live check" and the cleanup
+        becomes someone's afternoon. The cleanup is best-effort and never fails
+        the test — a passing push with a failed delete is still a passing push,
+        and it says so on stdout so the leftover can be removed by hand.
+        """
+        from runner.auth import AuthManager
+        from runner.brain.manager import BrainManager
+        from runner.sync.engine import SyncEngine
+
+        # AuthManager reads AKAION_API_KEY before touching disk, so the live
+        # token flows through the same code path the desktop app uses.
+        monkeypatch.setenv("AKAION_API_KEY", os.environ["AKAION_LIVE_TOKEN"])
+
+        cot_url = resolve_service_url("cot")
+        brain_dir = tmp_path / "live-vault"
+        brain_dir.mkdir()
+        brain = BrainManager(brain_dir)
+        message_id = None
+        try:
+            note = brain.create(
+                title="Annona live check",
+                content="Written by tests/test_live_cloud.py. Safe to delete.",
+                tags=["annona-live-test"],
+            )
+            brain.mark_pending(note.id)
+
+            engine = SyncEngine(
+                brain=brain,
+                cot_url=cot_url,
+                auth=AuthManager(config_dir=tmp_path / ".annona"),
+            )
+            result = engine.push_pending()
+
+            assert result == {"synced": 1, "errors": 0}, (
+                f"the deployed COT refused the push: {brain.get(note.id).sync_error}"
+            )
+
+            stored = brain.get(note.id)
+            assert stored.sync_status == "synced"
+            assert stored.cot_message_id, "the cloud accepted the note but returned no message id"
+            message_id = stored.cot_message_id
+        finally:
+            if message_id:
+                _delete_thought(cot_url, message_id)
+            brain.close()

@@ -15,7 +15,6 @@ const Icon = ({ d, size = 16 }: { d: string; size?: number }) => (
 export const BrainIcon     = ({ size = 16 }) => <Icon size={size} d="M9.5 2a2.5 2.5 0 0 1 0 5H9a7 7 0 0 0-7 7v0a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v0a7 7 0 0 0-7-7h-.5a2.5 2.5 0 0 1 0-5" />
 export const SyncIcon      = ({ size = 16 }) => <Icon size={size} d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5" />
 export const TasksIcon     = ({ size = 16 }) => <Icon size={size} d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-export const PluginsIcon   = ({ size = 16 }) => <Icon size={size} d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5zM16 8L2 22M17.5 15H9" />
 export const SettingsIcon  = ({ size = 16 }) => <Icon size={size} d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
 export const PlusIcon      = ({ size = 16 }) => <Icon size={size} d="M12 5v14M5 12h14" />
 export const SearchIcon    = ({ size = 16 }) => <Icon size={size} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />

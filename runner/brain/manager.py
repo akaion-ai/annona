@@ -13,6 +13,7 @@ Struttura su disco:
 """
 
 import json
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +48,32 @@ CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
     content
 );
 """
+
+
+# Words, not punctuation: unicode letters and digits, nothing else.
+_FTS_WORD = re.compile(r"[^\W_]+", re.UNICODE)
+
+
+def _fts_query(raw: str) -> str:
+    """Turn what somebody typed into an expression FTS5 will actually accept.
+
+    The query used to reach `MATCH` verbatim, which makes every FTS5 operator
+    live ammunition against the person using the search box. Searching for
+    `end-to-end` raised
+
+        sqlite3.OperationalError: no such column: to
+
+    because `-` is FTS5's NOT and `to` was read as a column name — a 500 from
+    `GET /api/brain/search` for a perfectly ordinary word. Quotes, `*`, `:`,
+    `(`, and `NEAR` all had their own version of this.
+
+    A search box is not a query language. Each word is extracted and quoted as a
+    literal, and the words are ANDed, which is what someone typing two words
+    into a box means. Returns "" when nothing searchable was typed; callers
+    treat that as no results rather than passing an empty MATCH to SQLite,
+    which is itself a syntax error.
+    """
+    return " ".join(f'"{word}"' for word in _FTS_WORD.findall(raw))
 
 
 def _now() -> str:
@@ -257,12 +284,15 @@ class BrainManager:
         return self._row_to_note(row) if row else None
 
     def search(self, query: str, limit: int = 20) -> List[Note]:
+        match = _fts_query(query)
+        if not match:
+            return []
         rows = self._conn.execute(
             """SELECT n.* FROM notes n
                JOIN notes_fts f ON n.id = f.id
                WHERE notes_fts MATCH ?
                ORDER BY rank LIMIT ?""",
-            (query, limit),
+            (match, limit),
         ).fetchall()
         return [self._row_to_note(r) for r in rows]
 

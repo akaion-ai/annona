@@ -416,6 +416,25 @@ Return the result in a structured format.""".format(
         exists.
         """
         if self.provider == "akaion":
+            # `_init_akaion` leaves the client None when there are no
+            # credentials, which is correct — the class must stay constructible
+            # on a machine that has never signed in. What was missing is this
+            # check. `execute_command` had it; the agentic loop, which replaced
+            # that path, did not, so the documented
+            #
+            #     annona run --once --task "..."
+            #
+            # died on a fresh install with
+            #
+            #     'NoneType' object has no attribute 'runner_agent_turn'
+            #
+            # An AttributeError is not an answer to "you are not signed in".
+            if self.client is None:
+                raise ConfigurationError(
+                    "the Akaion provider needs credentials: run `annona login`, or set "
+                    "ai.provider to a local runtime (`local` for Ollama, `echo` for the "
+                    "offline scripted backend). Nothing was sent anywhere."
+                )
             return AkaionBackend(client=self.client)
 
         if self.provider == "anthropic":

@@ -39,7 +39,7 @@ export default function SyncView() {
       setLastResult(`Push: ${res.synced} synced, ${res.errors} failed`)
       await loadStatus()
     } catch {
-      setLastResult("Push fallita — runner non raggiungibile")
+      setLastResult("Push failed — the daemon is not reachable")
     } finally {
       setPushing(false)
     }
@@ -67,10 +67,10 @@ export default function SyncView() {
       <div className="view-body">
         {runnerDown ? (
           <div className="card">
-            <p className="text-muted">Runner non raggiungibile su <code>localhost:7070</code>.</p>
+            <p className="text-muted">Daemon not reachable on <code>localhost:7070</code>.</p>
           </div>
         ) : loading ? (
-          <p className="text-sub">Caricamento…</p>
+          <p className="text-sub">Loading…</p>
         ) : status ? (
           <>
             <div className="sync-stat-grid">
@@ -85,7 +85,7 @@ export default function SyncView() {
                 <span style={{ fontWeight: 600, fontSize: 13 }}>Sync status</span>
               </div>
               <div>
-                <div className="text-sub" style={{ fontSize: 11, marginBottom: 3 }}>Ultimo push</div>
+                <div className="text-sub" style={{ fontSize: 11, marginBottom: 3 }}>Last push</div>
                 <div style={{ fontSize: 13 }}>{fmt(status.last_push)}</div>
               </div>
             </div>
@@ -96,27 +96,27 @@ export default function SyncView() {
                   <span style={{ color: "var(--yellow)", fontWeight: 600 }}>
                     {status.pending} {status.pending === 1 ? "note" : "notes"} waiting
                   </span>
-                  <span className="text-sub">— clicca "Push pending" per sincronizzare</span>
+                  <span className="text-sub">— hit "Push pending" to send them</span>
                 </div>
               </div>
             )}
 
             <div className="card" style={{ marginTop: 12 }}>
               <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>
-                Come funziona la sync
+                How sync works
               </div>
               <div style={{ color: "var(--text-muted)", fontSize: 12, lineHeight: 1.7 }}>
                 <p style={{ marginBottom: 6 }}>
-                  <strong style={{ color: "var(--text)" }}>Push</strong> — Notes marked "pending" are sengono inviate al cloud come <em>Thought</em>.
-                  Il cloud le processa, genera embeddings e le assegna automaticamente a un cluster.
+                  <strong style={{ color: "var(--text)" }}>Push</strong> — Notes marked "pending" are sent to the cloud as a <em>Thought</em>.
+                  The cloud processes them, generates embeddings, and assigns each one to a cluster.
                 </p>
                 <p>
-                  <strong style={{ color: "var(--text)" }}>Local only</strong> — Le note rimangono locali finché non le marchi
-                  esplicitamente per sync dal Brain (tasto <em>Sync</em> nell'editor).
+                  <strong style={{ color: "var(--text)" }}>Local only</strong> — Notes stay on this machine until you mark them
+                  for sync explicitly, from the <em>Sync</em> button in the note editor.
                 </p>
                 <p style={{ marginTop: 6 }}>
-                  <strong style={{ color: "var(--text)" }}>One-way sync</strong> — Annona publishes torso il cloud, non scarica.
-                  Le note cloud restano sul cloud; quelle locali vivono sul tuo Mac.
+                  <strong style={{ color: "var(--text)" }}>One-way sync</strong> — Annona publishes to the cloud, it never
+                  pulls back. Cloud notes stay in the cloud; local notes live on your machine.
                 </p>
               </div>
             </div>

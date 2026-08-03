@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useRunner } from "./hooks/useRunner";
-import { AskIcon, PerimeterIcon, BrainIcon, SyncIcon, TasksIcon, PluginsIcon, SettingsIcon } from "./components/ui/Icons";
+import { AskIcon, PerimeterIcon, BrainIcon, SyncIcon, TasksIcon, SettingsIcon } from "./components/ui/Icons";
 import AskView       from "./components/views/AskView";
 import PerimeterView from "./components/views/PerimeterView";
 import BrainView    from "./components/views/BrainView";
 import SyncView     from "./components/views/SyncView";
 import TasksView    from "./components/views/TasksView";
-import PluginsView  from "./components/views/PluginsView";
 import WelcomeView, { ONBOARDING_FLAG } from "./components/views/WelcomeView";
 import UpdateBanner from "./components/UpdateBanner";
 import { signIn, isSigninHandoff } from "./lib/signin";
@@ -14,17 +13,21 @@ import { auth as authApi, runner as runnerApi, sync as syncApi, AuthStatus, Runn
 import "./App.css";
 import "./css/auth-animations.css";
 
-type View = "ask" | "perimeter" | "brain" | "sync" | "tasks" | "plugins"
+type View = "ask" | "perimeter" | "brain" | "sync" | "tasks"
 
 // The kernel first, the vault second. What somebody installed this for is
 // deciding where their work runs; the notes are what the previous product did.
+//
+// No Plugins entry: there is no plugin system yet, and a nav item that leads to
+// a list of things that do not exist teaches people the whole app might be a
+// mock-up. It comes back when `annona plugin install` actually installs
+// something.
 const NAV: { id: View; label: string; icon: React.FC<{ size?: number }>; section: string }[] = [
   { id: "ask",       label: "Ask",       icon: AskIcon,       section: "Kernel" },
   { id: "perimeter", label: "Perimeter", icon: PerimeterIcon, section: "Kernel" },
   { id: "brain",     label: "Notes",     icon: BrainIcon,     section: "Workspace" },
   { id: "sync",      label: "Sync",      icon: SyncIcon,      section: "Workspace" },
   { id: "tasks",     label: "Tasks",     icon: TasksIcon,     section: "Workspace" },
-  { id: "plugins",   label: "Plugins",   icon: PluginsIcon,   section: "Workspace" },
 ]
 
 function readOnboardingDone(): boolean {
@@ -314,7 +317,6 @@ export default function App() {
             {view === "brain"   && <BrainView />}
             {view === "sync"    && <SyncView />}
             {view === "tasks"   && <TasksView />}
-            {view === "plugins" && <PluginsView />}
           </>
         )}
       </main>

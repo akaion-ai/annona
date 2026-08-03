@@ -335,12 +335,12 @@ export default function BrainView() {
       {runnerDown ? (
         <div className="view-body">
           <div className="card">
-            <p className="text-muted">Runner non raggiungibile su <code>localhost:7070</code>.</p>
+            <p className="text-muted">Daemon not reachable on <code>localhost:7070</code>.</p>
             <p className="text-sub" style={{ marginTop: 4, fontSize: 12 }}>Start the runner from the bar di stato.</p>
           </div>
         </div>
       ) : loading ? (
-        <div className="view-body"><p className="text-sub">Caricamento…</p></div>
+        <div className="view-body"><p className="text-sub">Loading…</p></div>
       ) : (
         <div className="brain-split" style={{ flex: 1, overflow: "hidden" }}>
           {/* List panel */}
@@ -351,7 +351,7 @@ export default function BrainView() {
                 className="ak-search-input"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cerca note…"
+                placeholder="Search notes…"
               />
             </div>
             {filtered.length === 0 ? (

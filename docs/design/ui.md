@@ -179,9 +179,11 @@ desktop app is a note editor next to an agent it cannot reach.
 
 - **A graph view.** Obsidian's is beautiful and mostly ornamental. If it earns its
   place later it will be because someone needed it, not because we copied it.
-- **Plugins.** `PluginsView` exists as a stub. A plugin API on a product whose
-  claim is a verifiable perimeter is a decision to make on purpose, with a
-  capability model, not by leaving a panel in place.
+- **Plugins.** The stub `PluginsView` and its nav entry have been removed. A
+  plugin API on a product whose claim is a verifiable perimeter is a decision to
+  make on purpose, with a capability model, not by leaving a panel in place — and
+  a panel listing four plugins that do not exist tells a first-time user the rest
+  of the app might be a mock-up too.
 - **A chat transcript UI.** Runs are documents. Making them look like a chat
   invites people to treat an agent with filesystem and shell access like a
   chatbot, which is exactly the mental model this product exists to correct.
