@@ -1,0 +1,83 @@
+name: publish to PyPI
+
+# `pip install annona` is advertised in the README and on the site. Until this
+# workflow ran for the first time, the name did not exist on PyPI and both
+# instructions 404'd.
+#
+# Publishing uses PyPI Trusted Publishing (OIDC), not an API token: nothing is
+# stored in repository secrets, and a token cannot leak from a repo that never
+# held one. That costs one piece of setup, described below, which has to be done
+# on pypi.org by a maintainer and cannot be done from here.
+#
+# ── One-time setup on pypi.org ────────────────────────────────────────────────
+# The project does not exist yet, so this is a *pending* publisher:
+#
+#   https://pypi.org/manage/account/publishing/
+#
+#     PyPI project name:  annona
+#     Owner:              akaion-ai
+#     Repository name:    annona
+#     Workflow name:      publish-pypi.yml
+#     Environment name:   pypi
+#
+# Then create the `pypi` environment under Settings → Environments, and give it
+# whatever approval rule you want on publishing. Once both exist, this workflow
+# can publish and the first run creates the project.
+# ──────────────────────────────────────────────────────────────────────────────
+
+on:
+  # Every published GitHub Release ships the matching sdist and wheel, so the
+  # desktop bundles and `pip install annona` cannot drift apart in version.
+  release:
+    types: [published]
+  # Manual, for the first run — the release that created the project predates
+  # this workflow, and for re-running after a failed upload.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      # `twine check` catches the metadata problems PyPI rejects on upload —
+      # a malformed README renders as raw text on the project page, and that is
+      # the first thing anyone sees.
+      - name: Check metadata
+        run: |
+          python -m pip install twine
+          python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # required for Trusted Publishing; nothing else needs it
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
