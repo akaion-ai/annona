@@ -56,12 +56,17 @@ nav:
       - Architecture as built: design/architecture.md
       - Sovereign runtime: design/sovereign-runtime.md
       - Local interface: design/ui.md
+      - Shared context and RBAC (proposal): design/shared-context.md
   - Skills: skills.md
   - Brand assets: assets/PROMPTS.md
   - Casi d'uso (IT): casi-duso.md
   - Research:
       - research/index.md
   - Reference:
+      - Attachments: reference/attachments.md
+      - Anonymisation and its limits: reference/anonymisation.md
+      - Frontier substrates: reference/frontier-substrates.md
+      - Running it on a server: reference/running-on-a-server.md
       - Backends: reference/backends.md
       - Releasing: reference/releasing.md
       - Typing debt: reference/typing-debt.md

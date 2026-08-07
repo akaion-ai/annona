@@ -167,9 +167,10 @@ class TestAuthenticated:
             )
             result = engine.push_pending()
 
-            assert result == {"synced": 1, "errors": 0}, (
-                f"the deployed COT refused the push: {brain.get(note.id).sync_error}"
-            )
+            assert result == {
+                "synced": 1,
+                "errors": 0,
+            }, f"the deployed COT refused the push: {brain.get(note.id).sync_error}"
 
             stored = brain.get(note.id)
             assert stored.sync_status == "synced"

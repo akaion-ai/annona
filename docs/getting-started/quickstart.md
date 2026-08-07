@@ -5,13 +5,16 @@ From a fresh clone to a working agentic run, offline, in about a minute.
 ## 1. Set up
 
 ```bash
-git clone git@github.com:Akaion-repos/akaion-app-runner.git
-cd akaion-app-runner
+git clone https://github.com/akaion-ai/annona.git
+cd annona
 make setup
 ```
 
 Creates a virtual environment, installs runtime and development dependencies, and
-installs the `akaion` command. Python 3.10+ is the only prerequisite.
+installs the `annona` command. Python 3.10+ is the only prerequisite.
+
+Not building from source? `pip install annona` gives you the same CLI, and
+[Install](install.md) covers the desktop builds.
 
 ## 2. See it run
 
@@ -49,9 +52,15 @@ markdown.
 ## 4. Configure
 
 ```bash
-akaion init       # writes ~/.akaion/config.yaml
-akaion status     # config, vault stats, connection state
+annona setup      # the policy and the configuration, in three questions
+annona doctor     # check the install can actually run a step
+annona status     # config, vault stats, connection state
 ```
+
+`annona setup` is the one command a new install needs. It writes both files the
+kernel reads — `~/.akaion/config.yaml` and `~/.annona/policy.yaml` — and then
+checks that the model the policy names is really on this machine. See
+[Install](install.md#first-run) for what it asks and why.
 
 The default configuration is local-first: `cloud.enabled: false`, so the runner
 never contacts a remote host until you ask it to. See
@@ -61,9 +70,9 @@ allow-lists before relying on the policy.
 ## 5. Connect to the cloud — optional
 
 ```bash
-akaion login        # opens a browser for Google sign-in
-akaion cloud enable
-akaion sync push --all-pending
+annona login        # opens a browser for Google sign-in
+annona cloud enable
+annona sync push --all-pending
 ```
 
 Sync is **push-only, per note, on your command**. Cloud content is never written
@@ -76,35 +85,36 @@ README.
 ## Commands
 
 ```bash
-akaion login / logout           # cloud credentials
-akaion init                     # create the configuration
-akaion run                      # start the daemon and local UI
-akaion run --once --task "…"    # execute a single task
-akaion run --no-cloud           # force local-only for this run
-akaion run --port 7171          # serve the local API elsewhere
-akaion status                   # config, vault, connection
-akaion logs -f                  # follow the log
-akaion config                   # show, edit or reset the configuration
-akaion dashboard                # interactive terminal dashboard
-akaion version
+annona login / logout           # cloud credentials
+annona setup                    # create the configuration
+annona run                      # start the daemon and local UI
+annona run --once --task "…"    # execute a single task
+annona run --no-cloud           # force local-only for this run
+annona run --port 7171          # serve the local API elsewhere
+annona status                   # config, vault, connection
+annona logs -f                  # follow the log
+annona config                   # show, edit or reset the configuration
+annona dashboard                # interactive terminal dashboard
+annona version
 
-akaion note add "title"         # create a note ($EDITOR, --stdin or --from-file)
-akaion note list                # list notes, filterable by sync status
-akaion note show <id|prefix>    # metadata and content
-akaion note edit <id|prefix>    # edit; a synced note returns to pending
-akaion note delete <id|prefix>
-akaion note search "query"      # full-text search
+annona note add "title"         # create a note ($EDITOR, --stdin or --from-file)
+annona note list                # list notes, filterable by sync status
+annona note show <id|prefix>    # metadata and content
+annona note edit <id|prefix>    # edit; a synced note returns to pending
+annona note delete <id|prefix>
+annona note search "query"      # full-text search
 
-akaion sync status              # what is local, pending, synced or failed
-akaion sync push --all-pending  # push every pending note
-akaion sync push --id <id>      # push specific notes
-akaion sync push --dry-run      # show what would happen
+annona sync status              # what is local, pending, synced or failed
+annona sync push --all-pending  # push every pending note
+annona sync push --id <id>      # push specific notes
+annona sync push --dry-run      # show what would happen
 
-akaion cloud enable / disable   # turn cloud sync on or off
-akaion cloud status
+annona cloud enable / disable   # turn cloud sync on or off
+annona cloud status
 ```
 
-Every command takes `--help`.
+Every command takes `--help`. `dogana` and `akaion` are aliases for `annona`,
+kept so older scripts keep working.
 
 ## Running the tests
 

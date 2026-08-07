@@ -11,8 +11,11 @@ Nothing here needs a GPU, a DGX, or an account.
 ## 1 · Write a policy
 
 ```bash
-annona policy init --model qwen2.5:14b
+annona setup            # three questions, then both files
 ```
+
+Or `annona policy init --model qwen2.5:14b` if you only want the policy and
+already have a configuration.
 
 That writes `~/.annona/policy.yaml` and changes the daemon's behaviour in one
 way that matters: **from this point tools are default-deny**. An installation
@@ -138,6 +141,42 @@ annona why step_7f3a      # one decision, reconstructed
 ```
 
 ---
+
+## Changing it later
+
+`policy.yaml` is a file you own, and editing it in your editor is still the most
+direct way. The app can do it too — **Perimeter → Edit**:
+
+![Editing the policy: which substrates each class may run on, what each tool may touch](../assets/screenshots/perimeter-editing.jpg)
+
+The fields cover what the tables show. **Text** mode edits the file itself, and
+is the only way to change something the fields do not cover — or to keep comments
+you wrote inside the body, which a structured save would rewrite away. The editor
+switches to it on its own when it finds such comments, rather than offering a
+save that deletes them.
+
+Three things hold that up, and they are worth knowing because they are what make
+an editable perimeter defensible rather than merely convenient:
+
+- **Nothing invalid reaches disk.** The replacement is parsed before it is
+  written, by the same loader the daemon uses. A policy that does not load would
+  stop enforcement, and this is the one failure the editor must not cause.
+- **Nothing is lost.** The previous file is copied to `policy.yaml.bak-<n>`
+  beside it, every time.
+- **Nothing is quiet.** Every change is appended to the same hash-chained ledger
+  as the decisions.
+
+That last one is the point. A perimeter you can widen is only trustworthy if
+widening it is on the record next to what ran afterwards:
+
+![The ledger: policy replaced, a run placed, policy replaced, a run held, policy replaced](../assets/screenshots/ledger-policy-changes.jpg)
+
+Read as: the perimeter was changed, something ran on the local GPU, the perimeter
+was narrowed, the next run was **held**, and the perimeter was changed again.
+Five entries, chain intact. `annona audit` shows the same from a terminal.
+
+A change takes effect on the **next run** — the policy is read per run, so
+nothing needs restarting.
 
 ## What to do next
 

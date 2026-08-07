@@ -325,4 +325,4 @@ Unchanged by this release and documented with metrics in
 - `openai`, `google` and `local` still reach a model without being able to call
   tools. Phase 2 closes the last one with real local inference.
 
-[Unreleased]: https://github.com/Akaion-repos/akaion-app-runner/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/akaion-ai/annona/compare/v0.1.0...HEAD

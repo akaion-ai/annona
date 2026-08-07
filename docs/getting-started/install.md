@@ -1,387 +1,308 @@
-# Annona — installation guide
-
-## 🚀 Quick Install (Recommended)
-
-### One-Line Installation
-
-```bash
-curl -fsSL https://install.akaion.com/runner.sh | bash
-```
-
-Or with wget:
-
-```bash
-wget -qO- https://install.akaion.com/runner.sh | bash
-```
-
-### What it does:
-1. ✅ Checks system requirements (Python 3.10+, Git)
-2. ✅ Clones the repository
-3. ✅ Creates virtual environment
-4. ✅ Installs dependencies
-5. ✅ Creates `akaion` command in PATH
-6. ✅ Sets up shell integration
-7. ✅ Creates systemd/launchd service (optional)
-
----
-
-## 📦 Manual Installation
-
-### Prerequisites
-- Python 3.10 or higher
-- Git
-- pip
-
-### Step 1: Clone Repository
-```bash
-git clone https://github.com/akaion/akaion-runner.git ~/.akaion-runner
-cd ~/.akaion-runner
-```
-
-### Step 2: Install
-```bash
-./install.sh
-```
-
-### Step 3: Add to PATH
-```bash
-# For bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# For zsh
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# For fish
-set -Ua fish_user_paths $HOME/.local/bin
-```
-
-### Step 4: Verify Installation
-```bash
-akaion version
-```
-
----
-
-## 🎯 Platform-Specific Instructions
-
-### Linux (Ubuntu/Debian)
-
-```bash
-# Install prerequisites
-sudo apt update
-sudo apt install -y python3.10 python3-pip python3-venv git curl
-
 # Install Annona
-curl -fsSL https://install.akaion.com/runner.sh | bash
 
-# Reload shell
-source ~/.bashrc
+Annona ships as two things, and you can have either or both:
 
-# Authenticate
-akaion login
-akaion init
-akaion run
-```
+| | What it is | Install |
+|---|---|---|
+| **The app** | A window: ask the kernel things, watch it decide, read the ledger. Carries its own daemon — nothing else to install. | [Download a build](#the-app) |
+| **The CLI** | `annona` — the same kernel from a terminal, plus the daemon, the policy tools and the ledger checks. No window. | `pip install annona` |
+
+Both read the same `~/.annona/policy.yaml` and write the same ledger. Installing
+one does not stop the other from working.
+
+!!! warning "Beta, and unsigned"
+    The macOS and Windows builds are **not signed by a recognised developer**.
+    Notarisation needs a paid Apple certificate this project does not yet use,
+    and saying so here is better than letting you find out from a dialog. On
+    macOS this has a concrete consequence and a concrete fix — see
+    [macOS](#macos), and read it before double-clicking anything.
+
+---
+
+## The app
+
+Builds for every platform are on the
+[releases page](https://github.com/akaion-ai/annona/releases/latest).
+
+| Platform | File |
+|---|---|
+| macOS, Apple Silicon (M-series) | `Annona_<version>_aarch64.dmg` |
+| macOS, Intel | `Annona_<version>_x64.dmg` |
+| Windows | `Annona_<version>_x64-setup.exe` |
+| Linux | `Annona_<version>_amd64.AppImage` or `annona_<version>_amd64.deb` |
 
 ### macOS
 
+Because the app is unsigned, macOS quarantines it on download. On **macOS 15 and
+later this is not a dialog you can click through**: the system reports the app as
+damaged and moves it to the Trash, and the old right-click → *Open* escape route
+no longer exists.
+
+So clear the quarantine flag on the **disk image, before opening it**:
+
 ```bash
-# Install Homebrew (if not installed)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install prerequisites
-brew install python@3.11 git
-
-# Install Annona
-curl -fsSL https://install.akaion.com/runner.sh | bash
-
-# Reload shell
-source ~/.zshrc
-
-# Authenticate
-akaion login
-akaion init
-akaion run
+xattr -dr com.apple.quarantine ~/Downloads/Annona_*.dmg
 ```
 
-### Windows (WSL2)
+Then open the `.dmg` and drag **Annona** to Applications as usual. The app has no
+quarantine flag to inherit, and launches normally from then on.
+
+That command removes the marker macOS puts on downloaded files. You are telling
+your machine you trust this file — which is a real decision, so it is yours to
+make rather than something an installer does quietly. If you would rather not:
+`pip install annona` needs none of this, and building from source needs none of
+it either.
+
+More detail, including how to tell "unsigned" apart from "actually corrupt", is
+in [Opening it on macOS](macos-gatekeeper.md).
+
+### Windows
+
+Run the `.exe`. SmartScreen will warn that the publisher is unknown: **More
+info** → **Run anyway**.
+
+### Linux
 
 ```bash
-# Install WSL2 first (PowerShell as Administrator)
-wsl --install
+chmod +x Annona_*.AppImage
+./Annona_*.AppImage
+```
 
-# Then follow Linux instructions inside WSL
+Or with the `.deb`:
+
+```bash
+sudo dpkg -i annona_*_amd64.deb
 ```
 
 ---
 
-## 🔧 Advanced Installation Options
-
-### Custom Installation Directory
+## The CLI
 
 ```bash
-export AKAION_INSTALL_DIR="$HOME/my-custom-path"
-curl -fsSL https://install.akaion.com/runner.sh | bash
+pip install annona
 ```
 
-### Specific Version
+Python 3.10 or newer. This installs three console scripts — `annona`, and the
+aliases `dogana` and `akaion` — plus the daemon and every policy and ledger
+command.
+
+The wheel **does not contain the window**. `pip install annona` gives you the
+kernel, the CLI and the local API; the interface lives in the desktop bundles.
+Starting the daemon from a pip install and opening `http://127.0.0.1:7070` gets
+you a 404, and that is expected rather than broken.
+
+Optional extras, none of which are needed to run:
 
 ```bash
-export AKAION_VERSION="v1.0.0"
-curl -fsSL https://install.akaion.com/runner.sh | bash
+pip install 'annona[formats]'    # .pptx, .p7m, Outlook .msg, HEIC photos
+pip install 'annona[providers]'  # SDKs for hosted models, if your policy names one
 ```
 
-### From Source (Development)
+## From source
 
 ```bash
-git clone https://github.com/akaion/akaion-runner.git
-cd akaion-runner
-python3 -m venv env
-source env/bin/activate
-pip install -e .
+git clone https://github.com/akaion-ai/annona.git
+cd annona
+make setup
 ```
+
+`make setup` creates the virtual environment and installs everything, including
+the development tools. `make demo` then runs a real agentic loop with real tool
+execution, no credentials and no network — the fastest way to see what the
+repository actually does.
 
 ---
 
-## 🐳 Docker Installation
+## First run
 
-### Pull Image
+Annona needs a **policy** before it can answer anything. The policy is the
+document every decision derives from: which model runs what, what may leave this
+machine, which folders a tool may open. Without one the daemon starts, says it is
+not enforcing, and refuses to place anything.
+
+You are asked for it once, in three questions. Both the app and the CLI ask the
+same three, from the same profiles.
+
+### In the app
+
+The first launch opens the configurator instead of the app:
+
+![The first-run configurator: which local model, what may leave the machine, which folders may be read](../assets/screenshots/setup-configurator.jpg)
+
+Each option says what it *means* rather than what it sets. "Local only" is the
+recommended answer and the one most installs should keep: nothing leaves the
+machine, and if the local model is down your work is held rather than quietly
+sent somewhere else.
+
+Choosing the second profile asks which hosted provider, and where its key lives:
+
+![Choosing a hosted provider: model, endpoint, and the name of the environment variable holding the key](../assets/screenshots/setup-frontier-provider.jpg)
+
+The policy stores the **name** of the environment variable, never the key. A
+policy file is the document you hand an auditor, and a key in it is a key in a
+git history.
+
+### In the terminal
+
+```console
+$ annona setup
+
+🛡️  Annona setup
+
+  config    written /Users/you/.akaion/config.yaml
+
+1. Which local model?
+
+  1  qwen2.5:14b  ← suggested
+  2  qwen2.5:3b
+
+  Number [1]:
+
+2. What may leave this machine?
+
+  1  Local only  (recommended)
+      Nothing leaves this machine, ever. If the local model is down, work is
+      held rather than sent elsewhere — you get a refusal, not a quiet fallback.
+
+  2  Local, plus a frontier model for public material
+      The hosted provider can only ever see material classified public…
+
+  3  Local only, and no file access
+      The kernel answers from the conversation alone…
+```
+
+`annona setup` is safe to run twice: it never overwrites a policy that exists.
+For scripts and containers there is nothing to answer —
+
 ```bash
-docker pull akaion/runner:latest
+annona setup --yes                          # defaults, no questions
+annona setup --profile local-only --model qwen2.5:14b
 ```
 
-### Run Container
+— and it asks nothing when there is no terminal, so a provisioning run cannot
+hang on a prompt.
+
+### You need a local model
+
+The default profiles run on [Ollama](https://ollama.com). Install it, then pull
+a model — 14b if the machine can hold it, 3b if not:
+
 ```bash
-docker run -d \
-  --name akaion-runner \
-  -e AKAION_API_KEY=your_api_key \
-  -v ~/.akaion:/root/.akaion \
-  akaion/runner:latest
+ollama pull qwen2.5:14b
 ```
 
-### Docker Compose
-```yaml
-version: '3.8'
-services:
-  akaion-runner:
-    image: akaion/runner:latest
-    container_name: akaion-runner
-    environment:
-      - AKAION_API_KEY=${AKAION_API_KEY}
-    volumes:
-      - ~/.akaion:/root/.akaion
-    restart: unless-stopped
-```
+Setup registers whichever model you already have rather than insisting on one,
+and tells you what to pull if you have none.
 
 ---
 
-## 🔄 Auto-Start Setup
+## Check it works
 
-### Linux (systemd)
+```console
+$ annona doctor
 
-```bash
-# Enable service
-systemctl --user enable akaion-runner
+ ✓   python              3.12.13
+ ✓   config              /Users/you/.akaion/config.yaml
+ ✓   policy              /Users/you/.annona/policy.yaml · 1 substrate(s), 3 rule(s)
+ ✓   substrate local-gpu up at http://localhost:11434 · qwen2.5:14b · 2 model(s)
+ ✓   ledger              0 entries · chain intact · 0 gaps
+ ✓   daemon              127.0.0.1:7070 · responding
 
-# Start service
-systemctl --user start akaion-runner
-
-# Check status
-systemctl --user status akaion-runner
-
-# View logs
-journalctl --user -u akaion-runner -f
+✅ Ready.
 ```
 
-### macOS (launchd)
+`doctor` changes nothing, contacts nothing except the substrates your policy
+already names, and exits 1 if the installation cannot run a step — so it can be
+the last line of a provisioning script.
+
+It checks one thing the daemon's own liveness probe cannot: whether the model
+your policy names is actually **pulled**. A runtime that is up with that model
+missing looks perfectly healthy to a liveness check, places the step, and then
+fails from the far side of a decision already written to the ledger as `placed`.
+
+```
+ ✗   substrate local-gpu up, but qwen2.5:14b is not pulled (has: qwen2.5:3b)
+
+  substrate local-gpu: ollama pull qwen2.5:14b
+```
+
+## Start it
 
 ```bash
-# Load LaunchAgent
-launchctl load ~/Library/LaunchAgents/com.akaion.runner.plist
-
-# Check status
-launchctl list | grep akaion
-
-# View logs
-tail -f ~/Library/Logs/akaion-runner.log
+annona run                # daemon + local interface on 127.0.0.1:7070
+annona run --port 7075    # somewhere else
 ```
+
+The app starts its own daemon; you do not need this if you are using the window.
 
 ---
 
-## 🔐 Post-Installation Setup
+## What it looks like working
 
-### 1. Authenticate
-```bash
-akaion login
-# Enter your API key from https://dashboard.akaion.com
-```
+Every answer carries where it ran and under which rule:
 
-### 2. Initialize Configuration
-```bash
-akaion init
-# Follow interactive prompts to configure permissions
-```
+![An answer with its placement: class internal, ran on local-gpu, one turn](../assets/screenshots/ask-placed-local-gpu.jpg)
 
-### 3. Test Installation
-```bash
-# Check status
-akaion status
+The same question under a policy that allows only the smaller model — same
+kernel, different placement, and the answer says so:
 
-# Run once
-akaion run --once --task "Echo test"
+![The same question, placed on local-fast instead](../assets/screenshots/ask-placed-local-fast.jpg)
 
-# Start daemon
-akaion run
-```
+And when nothing the policy permits is available, the honest outcome:
 
----
+![Held: nothing ran, and nothing left this machine](../assets/screenshots/ask-held.jpg)
 
-## 🔍 Verify Installation
+That is the behaviour to check on your own machine before trusting anything
+else: stop your local model, ask something, and confirm you get a refusal rather
+than an answer from somewhere you did not choose.
 
-### Check Components
-```bash
-# Version
-akaion version
+The Perimeter view shows what the policy allows, as the runtime reads it —
+not as it is written:
 
-# Status
-akaion status --verbose
+![The Perimeter view: rules, what earns a class, and which tools may touch what](../assets/screenshots/perimeter-policy.jpg)
 
-# Configuration
-akaion config --show
+…which substrates are registered and whether they answer:
 
-# Test connectivity
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://api.prod.akaion.com/health
-```
-
-### Directory Structure
-```
-~/.akaion-runner/          # Installation directory
-├── cli.py
-├── runner/
-├── env/                   # Virtual environment
-└── ...
-
-~/.akaion/                 # User configuration
-├── config.yaml
-├── auth.json              # Encrypted credentials
-└── logs/
-    └── runner.log
-
-~/.local/bin/
-└── akaion                 # Executable symlink
-```
+![Registered substrates with their jurisdiction, class ceiling and health](../assets/screenshots/perimeter-substrates.jpg)
 
 ---
 
-## 🛠️ Troubleshooting
+## Uninstall
 
-### Command not found: akaion
+**The app.** Drag `Annona.app` to the Trash (macOS), uninstall from Settings
+(Windows), or delete the AppImage / `sudo dpkg -r annona` (Linux).
 
-```bash
-# Check if in PATH
-echo $PATH | grep .local/bin
+**The CLI.** `pip uninstall annona`
 
-# Add to PATH manually
-export PATH="$HOME/.local/bin:$PATH"
+**Your data.** Neither of those touches it. The policy, the ledger and the vault
+are yours, and they stay:
 
-# Make permanent
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+```
+~/.annona/policy.yaml     the policy
+~/.annona/ledger.jsonl    every decision this machine took
+~/.akaion/config.yaml     daemon settings
+~/akaion-brain/           the vault, as plain markdown
 ```
 
-### Python version error
-
-```bash
-# Check Python version
-python3 --version
-
-# Install Python 3.10+ (Ubuntu)
-sudo apt install python3.10 python3.10-venv
-
-# Update alternatives
-sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
-```
-
-### Permission denied errors
-
-```bash
-# Make scripts executable
-chmod +x ~/.akaion-runner/install.sh
-chmod +x ~/.local/bin/akaion
-
-# Fix ownership
-chown -R $USER:$USER ~/.akaion-runner
-chown -R $USER:$USER ~/.akaion
-```
-
-### Installation script fails
-
-```bash
-# Enable debug mode
-bash -x <(curl -fsSL https://install.akaion.com/runner.sh)
-
-# Or manual installation
-git clone https://github.com/akaion/akaion-runner.git
-cd akaion-runner
-./install.sh
-```
+Delete them yourself when you want them gone. The ledger in particular is the
+record of what was decided and refused; a program that removed it during an
+uninstall would be removing the evidence that it behaved.
 
 ---
 
-## 🗑️ Uninstallation
+## Troubleshooting
 
-### Quick Uninstall
-```bash
-curl -fsSL https://install.akaion.com/uninstall.sh | bash
-```
+**`annona: command not found` after `pip install`** — the scripts went somewhere
+not on your `PATH`. `python3 -m runner.cli --help` works regardless (the
+distribution is `annona`, the Python package inside it is `runner`), and
+`python3 -m site --user-base` tells you which `bin` to add.
 
-### Manual Uninstall
-```bash
-# Stop services
-systemctl --user stop akaion-runner
-systemctl --user disable akaion-runner
+**The window says the daemon is unreachable** — run `annona doctor`. If it says
+the daemon is not running, the app's own daemon failed to start; the log is at
+`~/.annona/logs/annona.log`.
 
-# Remove files
-rm -rf ~/.akaion-runner
-rm -rf ~/.akaion  # Optional: removes config
-rm ~/.local/bin/akaion
-```
+**Opening `127.0.0.1:7070` gives a 404** — you are running the daemon from a
+`pip install`, which does not carry the window. Expected; use the app bundle.
 
----
-
-## 📊 Installation Verification Checklist
-
-- [ ] Python 3.10+ installed
-- [ ] Git installed
-- [ ] Repository cloned successfully
-- [ ] Virtual environment created
-- [ ] Dependencies installed
-- [ ] `akaion` command available
-- [ ] Authentication successful
-- [ ] Configuration initialized
-- [ ] Annona starts without errors
-- [ ] Can connect to cloud backend
-
----
-
-## 🆘 Support
-
-If you encounter issues:
-
-1. Check [Troubleshooting](#troubleshooting) section
-2. View logs: `akaion logs --tail 100`
-3. Check status: `akaion status --verbose`
-4. Report issues: https://github.com/akaion/akaion-runner/issues
-
----
-
-## 📚 Next Steps
-
-After installation:
-- Read [QUICKSTART.md](quickstart.md) for usage guide
-- Check [ARCHITECTURE.md](../design/architecture.md) for technical details
-- Configure permissions in `~/.akaion/config.yaml`
-- Set up auto-start with systemd/launchd
+**macOS moved the app to the Trash** — the quarantine flag; see
+[macOS](#macos) above.

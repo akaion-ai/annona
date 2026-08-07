@@ -7,7 +7,7 @@ that, not about style.
 ## Setup
 
 ```bash
-git clone git@github.com:Akaion-repos/akaion-app-runner.git
+git clone https://github.com/akaion-ai/annona.git
 cd akaion-app-runner
 make setup          # venv + runtime + dev dependencies
 make demo           # a real agentic run, offline, in ten seconds
@@ -51,7 +51,7 @@ usually that a dependency is pointing outward — the thing you need probably
 belongs behind a port in `runner/kernel/ports.py`.
 
 If a contract genuinely should change, that is an
-[ADR](https://github.com/Akaion-repos/akaion-app-runner/blob/main/docs/adr/index.md), not a config edit.
+[ADR](https://github.com/akaion-ai/annona/blob/main/docs/adr/index.md), not a config edit.
 
 ## Changes on the trust boundary
 
@@ -72,7 +72,7 @@ Older modules are listed individually in ledgers — the mypy overrides in
 `pyproject.toml` and the ruff per-file ignores. They are listed one by one rather
 than by wildcard so the debt is countable and shrinks by deletion. Touching one of
 those modules? Consider removing its line and paying down the difference. See
-[typing debt](https://github.com/Akaion-repos/akaion-app-runner/blob/main/docs/reference/typing-debt.md), which also records the two entries
+[typing debt](https://github.com/akaion-ai/annona/blob/main/docs/reference/typing-debt.md), which also records the two entries
 that are real defects rather than missing annotations.
 
 ## Tests

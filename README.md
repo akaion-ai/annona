@@ -169,6 +169,29 @@ placed on the frontier model, the answer is better, and it costs a tenth as much
 
 **Same code. Same plan. Different policy verdict.** That is the product.
 
+## What that looks like
+
+Every answer carries where it ran and under which rule. Nothing is inferred from
+a log afterwards — the decision is made before the step runs, and shown with it:
+
+![An answer with its placement: class internal, ran on local-gpu, one turn, 5.5s](docs/assets/screenshots/ask-placed-local-gpu.jpg)
+
+The same question under a policy that permits only the smaller model. Same code,
+same plan, different placement — and the answer says so rather than leaving you
+to wonder which model produced it:
+
+![The same question, placed on local-fast](docs/assets/screenshots/ask-placed-local-fast.jpg)
+
+And with nothing the policy permits available, the outcome the whole design is
+for. Not a fallback, not a degraded answer from somewhere else:
+
+![Held: nothing ran, and nothing left this machine](docs/assets/screenshots/ask-held.jpg)
+
+The Perimeter view is the policy as the runtime reads it, which is not always
+what somebody thinks they wrote:
+
+![The Perimeter view: rules, what earns a class, which tools may touch what](docs/assets/screenshots/perimeter-policy.jpg)
+
 ## What it can actually do
 
 The kernel decides placement; these are the things it places. All of it predates
@@ -177,7 +200,8 @@ does not name no longer runs.
 
 | | |
 |---|---|
-| **Tools** | `document_reader` (PDF, DOCX, XLSX, CSV, source), `explorer`, `filesystem`, `shell`, `browser` — default-deny, per tool, per path |
+| **Tools** | `document_reader`, `explorer`, `filesystem`, `shell`, `browser` — default-deny, per tool, per path |
+| **Attachments** | drop a file into the window: documents, spreadsheets, XML and Italian **FatturaPA**, **signed `.p7m` envelopes**, email with attachments, archives, images, audio and video (transcribed locally), **DICOM**. Stored on your disk, classified before the first turn, read through the gated tool like anything else — [reference](docs/reference/attachments.md) |
 | **Local vault** | every note a markdown file under `~/akaion-brain/`, indexed in SQLite: greppable, diffable, yours if you walk away |
 | **Cloud sync** | one-way, opt-in, per note. `cloud.enabled: false` is the shipped default |
 | **Desktop app** | Tauri shell for macOS, Windows and Linux over the same daemon |
@@ -357,11 +381,32 @@ policy names a provider, and the decision layer never learns which one.
 | **macOS** | Apple Silicon and Intel | [`Annona_*.dmg`](https://github.com/akaion-ai/annona/releases/latest) |
 | **Linux** | portable — `chmod +x` and run | [`Annona_*.AppImage`](https://github.com/akaion-ai/annona/releases/latest) |
 
-A tagged release builds all four targets and drafts a GitHub Release with the
-bundles attached. They are unsigned during beta: on macOS right-click →
-**Open** on first launch, on Windows SmartScreen → **More info** → **Run
-anyway**. The app is the same daemon with a window around it — the CLI, the
-policy and the ledger are identical.
+A tagged release builds all four targets and publishes a GitHub Release with the
+bundles attached. They are **unsigned during beta**, and on macOS that is not a
+dialog you can click through: since macOS 15 an un-notarised app that carries a
+quarantine flag is reported as damaged and **moved to the Trash**. Clear the flag
+on the disk image before opening it —
+
+```bash
+xattr -dr com.apple.quarantine ~/Downloads/Annona_*.dmg
+```
+
+— and drag it in as usual. On Windows, SmartScreen → **More info** → **Run
+anyway**. Full detail, and the two routes that avoid this entirely, in
+[Install](https://akaion-ai.github.io/annona/getting-started/install/).
+
+The app is the same daemon with a window around it — the CLI, the policy and the
+ledger are identical.
+
+On first launch it asks the three questions the policy answers, rather than
+defaulting silently and leaving you to find `policy.yaml` later:
+
+![The first-run configurator: which local model, what may leave this machine, which folders may be read](docs/assets/screenshots/setup-configurator.jpg)
+
+Each option says what it *means* rather than what it sets, because "adds a
+substrate capped at public" describes YAML and "the hosted provider can only ever
+see material classified public" is what somebody is agreeing to. `annona setup`
+asks the same three in a terminal, from the same profiles.
 
 ### From source, in sixty seconds
 
@@ -391,15 +436,24 @@ task the policy permits and one it refuses:
 Nothing left the process. The same run is a CI gate on every push
 (`python -m runner.demo --check`), so that claim cannot rot.
 
-Then: `make run` starts the daemon and a local UI on `127.0.0.1:7070`. No account
-required, ever.
+Then:
+
+```bash
+annona setup        # the policy, in three questions — or --yes for the defaults
+annona doctor       # check this machine can actually run a step
+make run            # daemon + local UI on 127.0.0.1:7070
+```
+
+No account required, ever. `annona doctor` is the one to run when something is
+wrong: it names what is missing, including the case a liveness probe cannot see —
+a runtime that is up with the model your policy names not pulled.
 
 ### As an appliance, with a real model
 
 ```bash
 docker compose up -d                                   # kernel + Ollama, arm64 or amd64
 docker compose exec annona-ollama ollama pull qwen2.5:14b
-docker compose exec annona annona policy init --endpoint http://ollama:11434 --model qwen2.5:14b
+docker compose exec annona annona setup --yes --endpoint http://ollama:11434 --model qwen2.5:14b
 make verify                                            # the acceptance run
 ```
 
@@ -460,6 +514,23 @@ rules:
 A DPO can read that in one sitting, which is the design constraint. Full schema,
 placement algorithm and the state machine behind it:
 **[`docs/design/hld.md`](docs/design/hld.md)**.
+
+You can edit it in your editor, or in the app under **Perimeter → Edit**. Being
+editable from a window is a real widening of what that surface can do, so three
+things hold it up: the replacement is **parsed before it is written** (a policy
+that does not load would stop enforcement, and this must not be able to cause
+that), the previous file is **always copied aside**, and every change is
+**appended to the same hash-chained ledger as the decisions**.
+
+That last one is what makes it defensible rather than merely convenient — widen
+the perimeter, run something, narrow it back, and the record reads:
+
+![The ledger: policy replaced, a run placed, policy replaced, a run held, policy replaced](docs/assets/screenshots/ledger-policy-changes.jpg)
+
+A pairing token does **not** grant this. Pairing lets a web app run steps here;
+an origin that could also rewrite the policy would hold every permission the
+perimeter exists to withhold, so the write routes refuse anything but this
+machine.
 
 ## Where it runs
 
