@@ -25,15 +25,23 @@ if [ ! -d "$ASSETS_DIR" ]; then
   exit 1
 fi
 
-# Tauri 2 bundle filename conventions:
-#   macOS (M-series): "Annona_<version>_aarch64.dmg"
-#   macOS (Intel):    "Annona_<version>_x64.dmg"
-#   Linux AppImage:   "Annona_<version>_amd64.AppImage"
-#   Windows NSIS:     "Annona_<version>_x64-setup.exe"
+# What the updater downloads, per platform. This is NOT the same as what a
+# person downloads:
+#
+#   macOS   "Annona_<version>_<arch>.app.tar.gz"   ← the .dmg is never signed
+#   Linux   "Annona_<version>_amd64.AppImage"
+#   Windows "Annona_<version>_x64-setup.exe"
+#
+# The darwin entries used to name the .dmg, and Tauri does not produce a
+# `.dmg.sig` for the same reason it does not update from one: the updater
+# replaces an app bundle in place, and a disk image is not one. The lookup
+# therefore found no signature, skipped both Apple platforms with a warning, and
+# the manifest that reached users had no macOS entry at all.
+#
 # .deb has no updater path (apt handles updates), so we skip it.
 declare -a PLATFORMS=(
-  "darwin-aarch64|*aarch64.dmg"
-  "darwin-x86_64|*x64.dmg"
+  "darwin-aarch64|*aarch64.app.tar.gz"
+  "darwin-x86_64|*x64.app.tar.gz"
   "linux-x86_64|*amd64.AppImage"
   "windows-x86_64|*x64-setup.exe"
 )

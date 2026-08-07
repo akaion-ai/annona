@@ -29,23 +29,98 @@
 # .app and the .dmg in one pass — there is no point in between at which the
 # bundle can be signed.
 #
+# 4. The updater archive has to be rebuilt after signing, and this is not
+#    optional. `tauri build` writes `Annona.app.tar.gz` from the bundle *as it
+#    was when it bundled it* — which, on the ad-hoc path, is before this script
+#    signs anything. Shipping that archive means every auto-update delivers the
+#    unsigned, unsealed bundle: the "damaged, move to Trash" state that step 1
+#    exists to prevent, reintroduced through the update channel where nobody
+#    would look for it. So the archive is repacked from the signed app and
+#    re-signed with the updater key.
+#
+#    With a real Developer ID (APPLE_SIGNING_IDENTITY set), Tauri signs during
+#    the build and its own archive is already correct — the repack is harmless
+#    there, and it keeps one code path instead of two.
+#
 # Usage: macos-sign-and-dmg.sh <target-triple> [version]
 
 set -euo pipefail
 
 TARGET="${1:?usage: macos-sign-and-dmg.sh <target-triple> [version]}"
 VERSION="${2:-$(python3 -c "import json;print(json.load(open('ui/src-tauri/tauri.conf.json'))['version'])")}"
-IDENTITY="${MACOS_SIGNING_IDENTITY:--}"
+# A Developer ID identity when the release has one, ad-hoc otherwise. Ad-hoc is
+# a valid signature that Apple has not vouched for: Gatekeeper says
+# "unidentified developer", which since macOS 15 is not a dialog a user can
+# click through. See docs/getting-started/macos-gatekeeper.md.
+IDENTITY="${APPLE_SIGNING_IDENTITY:-${MACOS_SIGNING_IDENTITY:--}}"
 
 BUNDLE_DIR="ui/src-tauri/target/${TARGET}/release/bundle"
 APP="${BUNDLE_DIR}/macos/Annona.app"
 
 [ -d "$APP" ] || { echo "::error::no app bundle at $APP — build with --bundles app first" >&2; exit 1; }
 
-echo "→ signing $APP with identity '${IDENTITY}' (no --deep, on purpose)"
-codesign --force --sign "$IDENTITY" "$APP"
+if [ "$IDENTITY" = "-" ]; then
+  echo "→ signing $APP ad-hoc (no Developer ID in this build)"
+  codesign --force --sign - "$APP"
+else
+  # --options runtime is what notarisation requires; Apple rejects a submission
+  # without the hardened runtime, and the rejection arrives minutes later from
+  # a service rather than from the build.
+  echo "→ signing $APP with '${IDENTITY}' and the hardened runtime"
+  codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+fi
 codesign --verify --strict "$APP"
 codesign -dv --verbose=2 "$APP" 2>&1 | grep -E "Signature|Sealed Resources|Info.plist"
+
+# ── Notarisation ──────────────────────────────────────────────────────────────
+#
+# Only with a real identity and credentials. Apple does not notarise an ad-hoc
+# signature, so on that path this is skipped rather than attempted and failed.
+notarise() {
+  local artefact="$1"
+  if [ "$IDENTITY" = "-" ] || [ -z "${APPLE_ID:-}${APPLE_API_KEY:-}" ]; then
+    return 0
+  fi
+  echo "→ notarising $artefact (this waits for Apple, typically 1-5 minutes)"
+  if [ -n "${APPLE_API_KEY:-}" ]; then
+    xcrun notarytool submit "$artefact" --wait \
+      --key "${APPLE_API_KEY_PATH}" \
+      --key-id "${APPLE_API_KEY}" \
+      --issuer "${APPLE_API_ISSUER}"
+  else
+    xcrun notarytool submit "$artefact" --wait \
+      --apple-id "${APPLE_ID}" \
+      --password "${APPLE_PASSWORD}" \
+      --team-id "${APPLE_TEAM_ID}"
+  fi
+  # Stapling puts the ticket inside the file, so the first launch works on a
+  # machine that is offline or behind a firewall that eats Apple's OCSP.
+  xcrun stapler staple "$artefact"
+  xcrun stapler validate "$artefact"
+}
+
+notarise "$APP"
+
+# ── The updater archive, repacked from what was actually signed ───────────────
+TARBALL="${BUNDLE_DIR}/macos/Annona.app.tar.gz"
+if [ -f "$TARBALL" ]; then
+  echo "→ repacking $TARBALL from the signed bundle"
+  rm -f "$TARBALL" "${TARBALL}.sig"
+  # -C so the archive holds `Annona.app` at its root, which is the layout the
+  # updater unpacks and replaces in place. Anything else installs a nested
+  # directory and the update silently does nothing.
+  tar -czf "$TARBALL" -C "${BUNDLE_DIR}/macos" "Annona.app"
+
+  if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+    (cd ui && npx --no-install tauri signer sign "../${TARBALL}")
+    [ -f "${TARBALL}.sig" ] || { echo "::error::signing produced no ${TARBALL}.sig" >&2; exit 1; }
+    echo "→ signed: ${TARBALL}.sig"
+  else
+    # Not a warning to skip past: an unsigned archive means this platform has no
+    # auto-update in the release, and `latest.json` will omit it.
+    echo "::warning::TAURI_SIGNING_PRIVATE_KEY is unset — no updater signature for macOS"
+  fi
+fi
 
 # Arch label matching Tauri's own naming, so the release assets and every
 # download link on the site keep the names they already have.
@@ -108,5 +183,11 @@ rm -f "$RW_DMG"
 # how it found it is a step nobody can run twice.
 mv "$STAGE/Annona.app" "$APP"
 rm -rf "$STAGE_ROOT"
+
+# The dmg is what a person downloads, so it is the file whose ticket decides
+# whether the first launch works. Notarising the app inside it is not enough on
+# its own: an unstapled disk image makes Gatekeeper ask Apple over the network,
+# and the answer on a machine that cannot reach Apple is no.
+notarise "$DMG"
 
 echo "→ done: $DMG ($(du -h "$DMG" | cut -f1))"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "annona"
-version = "0.1.0"
+version = "0.1.2"
 description = "Annona — the sovereign execution kernel for AI agents. Decides where each step runs, enforces it, and records it."
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -63,10 +63,29 @@ dependencies = [
 [project.optional-dependencies]
 # Remote inference providers. None is required: the runner works offline with
 # the `echo` backend, and Phase 2 adds local runtimes.
-anthropic = ["anthropic>=0.25.7"]
+anthropic = ["anthropic>=0.40"]
 openai = ["openai>=1.30.1"]
 google = ["google-generativeai>=0.5.4"]
-providers = ["anthropic>=0.25.7", "openai>=1.30.1", "google-generativeai>=0.5.4"]
+providers = ["anthropic>=0.40", "openai>=1.30.1", "google-generativeai>=0.5.4"]
+
+# File formats beyond the ones every install can read. Each is optional because
+# a machine that will never open a presentation should not carry the library
+# that reads one; `runner.tools.extractors` reports what is missing, with the
+# install line, rather than failing.
+formats = [
+  "python-pptx>=0.6.23",   # .pptx
+  "asn1crypto>=1.5.1",     # .p7m / CAdES, without shelling out to openssl
+  "extract-msg>=0.48",     # Outlook .msg
+  "pillow>=10.3.0",        # images and EXIF
+  "pillow-heif>=0.16",     # HEIC, which is what an iPhone actually produces
+  "pytesseract>=0.3.10",   # OCR — also needs the tesseract binary
+  "pypdfium2>=4.30",       # rasterising a scanned PDF before OCR
+]
+# Speech, transcribed on this machine. Heavy (torch), and deliberately separate:
+# `annona[formats]` should not pull a gigabyte of wheels.
+media = ["faster-whisper>=1.0.3"]
+# Medical imaging.
+medical = ["pydicom>=2.4.4", "numpy>=1.26", "pillow>=10.3.0"]
 
 dev = [
   "pytest>=8.2.0",
@@ -121,7 +140,7 @@ markers = [
   "unit: pure unit tests, no I/O",
   "integration: touches the real filesystem or spawns a subprocess",
   "e2e: drives the runner end to end through a real agentic loop (offline)",
-  "live: needs a real local model (ANNONA_LIVE_OLLAMA=1); skipped otherwise",
+  "live: needs a real model — a local one (ANNONA_LIVE_OLLAMA=1) or a frontier\n        credential (ANTHROPIC_API_KEY, OPENAI_API_KEY, ANNONA_LIVE_KEY); skipped otherwise",
   "slow: takes seconds rather than milliseconds",
   "container: needs a working Docker daemon",
 ]

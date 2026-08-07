@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "annona-shell"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "ctrlc",
  "env_logger",

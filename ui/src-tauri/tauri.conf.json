@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Annona",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "identifier": "com.akaion.annona",
   "build": {
     "beforeBuildCommand": "npm run build",
@@ -30,11 +30,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app", "appimage", "deb", "msi", "nsis"],
+    "targets": [
+      "dmg",
+      "app",
+      "appimage",
+      "deb",
+      "msi",
+      "nsis"
+    ],
     "category": "Productivity",
-    "copyright": "© 2026 Akaion",
-    "shortDescription": "Annona — the sovereign execution kernel",
-    "longDescription": "Annona decides where each step of an agent run may execute — your GPU, your cluster, or a frontier API — enforces the decision, and records it.",
+    "copyright": "\u00a9 2026 Akaion",
+    "shortDescription": "Annona \u2014 the sovereign execution kernel",
+    "longDescription": "Annona decides where each step of an agent run may execute \u2014 your GPU, your cluster, or a frontier API \u2014 enforces the decision, and records it.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,7 +49,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/annona"],
+    "externalBin": [
+      "binaries/annona"
+    ],
     "macOS": {
       "minimumSystemVersion": "10.15",
       "exceptionDomain": "127.0.0.1"
@@ -56,7 +65,8 @@
       "deb": {
         "depends": []
       }
-    }
+    },
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "shell": {
@@ -68,7 +78,7 @@
         "https://github.com/akaion-ai/annona/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "pubkey": "PLACEHOLDER_PUBLIC_KEY_GENERATED_BY_TAURI_SIGNER"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1NTNERDg0MTRDODMzMTUKUldRVk04Z1VoTjFUUmJtZWMrbjVuS1N5d0llUW9aRTREOG9qZGRKbk50Y0dLcHRsZ2xhUFB3Q2QK"
     }
   }
 }

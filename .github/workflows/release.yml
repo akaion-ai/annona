@@ -37,6 +37,11 @@ jobs:
             target: x86_64-unknown-linux-gnu
             pyinstaller-name: annona-x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
+    # At job level so a step's `if:` can read it — the `secrets` context is not
+    # available in a step condition, and `env` set on the step itself is not
+    # visible to that step's own `if`.
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -157,6 +162,40 @@ jobs:
           New-Item -ItemType Directory -Force -Path ui/src-tauri/binaries | Out-Null
           Move-Item -Force dist-sidecar/annona.exe "ui/src-tauri/binaries/${{ matrix.pyinstaller-name }}"
 
+      # The cargo cache covers `ui/src-tauri/target`, and the bundle output lives
+      # inside it — so a restored cache brings back the *previous version's*
+      # bundles, and the glob in "Collect bundle artifacts" sweeps them into the
+      # release beside the new ones. That is how v0.1.1 shipped eleven assets,
+      # five of them 0.1.0, with two versions of the same installer on one page.
+      - name: Clear stale bundles from the restored cache
+        shell: bash
+        run: rm -rf "ui/src-tauri/target/${{ matrix.target }}/release/bundle"
+
+      - name: Import the Developer ID certificate (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        # A throwaway keychain, unlocked for this job only. The login keychain on
+        # a hosted runner is not ours to put a signing identity into, and a
+        # keychain that outlives the job is a credential nobody deletes.
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          PASSWORD="$(uuidgen)"
+          security create-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASSWORD" "$KEYCHAIN"
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
       - name: Build Tauri bundle
         working-directory: ui
         # macOS builds the .app only; the .dmg is made in the next step, around
@@ -164,22 +203,29 @@ jobs:
         # at which the app exists and the dmg does not.
         run: npx tauri build --target ${{ matrix.target }} ${{ runner.os == 'macOS' && '--bundles app' || '' }}
         env:
-          # Signing keys for tauri-plugin-updater. When set, Tauri emits a `.sig`
-          # alongside each bundle (.dmg / .exe / .AppImage). The matching public
-          # key is embedded in tauri.conf.json. See scripts/generate-updater-keys.sh.
-          # Secrets are empty on forks / before Step 7c key rotation; in that case
-          # Tauri builds unsigned and skips the .sig — auto-update will not work
-          # for those bundles, but the build still succeeds.
+          # Signing keys for tauri-plugin-updater. With
+          # `bundle.createUpdaterArtifacts: true` and a pubkey in the config,
+          # this is REQUIRED: Tauri fails the build rather than producing an
+          # unsigned update artefact, which is the behaviour we want — a release
+          # whose updater silently does not work is worse than one that stops
+          # here. The value is the key's *contents*, not a path.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Sign the app and build the dmg (macOS)
         if: runner.os == 'macOS'
         shell: bash
-        # Ad-hoc, not notarised: it makes Gatekeeper say "unidentified developer"
-        # (which a user can accept) instead of "damaged" (which offers only the
-        # Trash). See the script for why this is not `signingIdentity` in the
-        # Tauri config, and why it must not use `--deep`.
+        # Signs, notarises when there are credentials, then repacks and re-signs
+        # the updater archive from the signed bundle — `tauri build` wrote that
+        # archive before any of this, so shipping its copy would deliver the
+        # unsigned app through the update channel. See the script.
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: ./scripts/macos-sign-and-dmg.sh ${{ matrix.target }}
 
       - name: Collect bundle artifacts
@@ -193,7 +239,23 @@ jobs:
           # verify each download against the embedded public key.
           if [ "$RUNNER_OS" = "macOS" ]; then
             cp "$BUNDLE_DIR"/dmg/*.dmg     artifacts/ 2>/dev/null || true
-            cp "$BUNDLE_DIR"/dmg/*.dmg.sig artifacts/ 2>/dev/null || true
+            # macOS's updater artefact is the .app.tar.gz, not the dmg — Tauri
+            # never writes a .dmg.sig, which is why build-manifest.sh used to
+            # find no signature and skip both Apple platforms.
+            #
+            # Both architectures produce a file called exactly `Annona.app.tar.gz`,
+            # so they are renamed here. Flattened into one directory unrenamed,
+            # the second job's archive silently replaces the first's and half the
+            # Mac users get the wrong binary from an update that verified fine.
+            VERSION="$(python3 -c "import json;print(json.load(open('ui/src-tauri/tauri.conf.json'))['version'])")"
+            case "${{ matrix.target }}" in
+              aarch64-apple-darwin) ARCH=aarch64 ;;
+              x86_64-apple-darwin)  ARCH=x64 ;;
+            esac
+            for ext in "" ".sig"; do
+              SRC="$BUNDLE_DIR/macos/Annona.app.tar.gz${ext}"
+              [ -f "$SRC" ] && cp "$SRC" "artifacts/Annona_${VERSION}_${ARCH}.app.tar.gz${ext}"
+            done
           elif [ "$RUNNER_OS" = "Windows" ]; then
             cp "$BUNDLE_DIR"/nsis/*.exe     artifacts/ 2>/dev/null || true
             cp "$BUNDLE_DIR"/nsis/*.exe.sig artifacts/ 2>/dev/null || true
@@ -240,7 +302,8 @@ jobs:
           mkdir -p release-assets
           find artifacts/ -type f \( \
               -name "*.dmg" -o \
-              -name "*.dmg.sig" -o \
+              -name "*.app.tar.gz" -o \
+              -name "*.app.tar.gz.sig" -o \
               -name "*.exe" -o \
               -name "*.exe.sig" -o \
               -name "*.msi" -o \
@@ -280,7 +343,15 @@ jobs:
           body: |
             ## Annona ${{ github.ref_name }}
 
-            **Beta — unsigned builds.** First launch on macOS: right-click the app and pick **Open** to bypass Gatekeeper.
+            **Beta.** On macOS, if these builds are not notarised, the right-click → **Open**
+            trick no longer exists: since macOS 15 an un-notarised app that carries a quarantine
+            flag is reported as damaged and **moved to the Trash**. Clear the flag on the disk
+            image before opening it:
+
+            ```bash
+            xattr -dr com.apple.quarantine ~/Downloads/Annona_*.dmg
+            ```
+
             On Windows, SmartScreen may warn; click **More info** then **Run anyway**.
 
             ### Downloads

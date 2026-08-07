@@ -58,14 +58,48 @@ times the Linux rate**, so do not wire this workflow to every commit.
 
 ## Signing
 
-Bundles are currently **unsigned**:
+### macOS
 
-- macOS Gatekeeper — right-click → **Open** on first launch.
-- Windows SmartScreen — *More info* → *Run anyway*.
-- Linux — `chmod +x` the AppImage; install the `.deb` with `sudo dpkg -i`.
+The release pipeline signs and notarises **when the secrets exist**, and falls
+back to an ad-hoc signature when they do not. The difference is not cosmetic:
 
-Apple notarisation and a Windows EV certificate are planned. Both need extra
-repository secrets (`APPLE_*`, `WINDOWS_CERTIFICATE_*`).
+| | Gatekeeper's verdict | What a user has to do |
+|---|---|---|
+| Notarised | accepted | nothing |
+| Ad-hoc (today) | *damaged* on macOS 15+ | `xattr -dr com.apple.quarantine` on the dmg, **before** opening it |
+
+Since macOS 15 the right-click → *Open* bypass no longer exists; an un-notarised
+app carrying a quarantine flag is moved to the Trash. So on the ad-hoc path the
+download does not merely warn, it fails, and the release notes have to say so.
+
+To switch the pipeline on, add these repository secrets. Absent any of them, the
+build takes the ad-hoc path and says which one it took.
+
+| Secret | What it is |
+|---|---|
+| `APPLE_CERTIFICATE` | base64 of the **Developer ID Application** `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | the password set when exporting it |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Name (TEAMID)` |
+| `APPLE_ID` | the Apple ID that owns the membership |
+| `APPLE_PASSWORD` | an **app-specific password**, not the account password |
+| `APPLE_TEAM_ID` | the 10-character team identifier |
+
+Creating the certificate needs the Account Holder or Admin role, and it is not
+the "Apple Development" certificate Xcode makes for you — that one cannot sign
+for distribution and Apple will not notarise with it. Xcode → Settings →
+Accounts → Manage Certificates → **+** → *Developer ID Application*, then export
+it from Keychain Access as `.p12`.
+
+    base64 -i DeveloperID.p12 | pbcopy      # what goes in APPLE_CERTIFICATE
+
+### Windows
+
+Still unsigned; SmartScreen warns and a user clicks *More info* → *Run anyway*.
+An EV certificate is the fix and has not been bought.
+
+### Linux
+
+No signing. `chmod +x` the AppImage; install the `.deb` with `sudo dpkg -i`.
 
 ## Auto-update
 
@@ -119,11 +153,42 @@ code signing. Once, before the first tag with auto-update enabled:
 
 Into `release-assets/`:
 
-- `*.dmg`, `*.exe`, `*.AppImage`, `*.deb` — the user-facing bundles
-- `*.dmg.sig`, `*.exe.sig`, `*.AppImage.sig` — signatures the manifest needs
+- `*.dmg`, `*.exe`, `*.AppImage`, `*.deb` — what a **person** downloads
+- `*.app.tar.gz` (macOS), `*-setup.exe` (Windows), `*.AppImage` (Linux) — what the
+  **updater** downloads, each with its `.sig`
 - `latest.json` — consumed by the updater plugin
 
+Those are not the same list, and confusing them is how the updater stayed broken
+through two releases. **macOS never produces a `.dmg.sig`**: the updater replaces
+an app bundle in place and a disk image is not one, so the signed artefact is the
+`.app.tar.gz`. A manifest that looks for `.dmg.sig` finds nothing, skips both
+Apple platforms with a warning, and publishes a manifest with no macOS entry.
+
 `.deb` has no manifest entry: apt installations update through apt.
+
+### Building locally now fails without the key
+
+`bundle.createUpdaterArtifacts: true` plus a `pubkey` in the config makes Tauri
+**fail the build** when `TAURI_SIGNING_PRIVATE_KEY` is unset, rather than quietly
+producing an unsigned artefact. That is the behaviour worth having in CI — a
+release whose updater silently does not work is worse than one that stops — but
+it means a local `npx tauri build` errors with:
+
+    A public key has been found, but no private key.
+
+For local work, generate a throwaway key and use that. It will not match the
+published pubkey, and Tauri warns about exactly that, which is correct: bundles
+built this way must not be shipped.
+
+```bash
+npx tauri signer generate -w /tmp/local.key -p ""
+export TAURI_SIGNING_PRIVATE_KEY="$(cat /tmp/local.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+```
+
+Note the variable holds the key's **contents**. `TAURI_SIGNING_PRIVATE_KEY_PATH`
+is documented by the CLI but the bundler in 2.11 asks for the contents, and the
+build fails with the message above if only the path is set.
 
 ## Web UI
 
