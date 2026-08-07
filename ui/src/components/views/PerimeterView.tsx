@@ -6,15 +6,20 @@ import {
   PolicyDoc,
   SubstrateHealth,
 } from "../../api/kernel"
+import PolicyEditor from "./PolicyEditor"
 
 /**
  * Perimeter — the policy, the substrates and the record, on one screen.
  *
  * The three things `annona policy show`, `annona substrates` and `annona audit`
- * print, for the people who will never open a terminal. Read-only on purpose:
- * editing the perimeter from a page that every process on this machine can
- * reach is a larger decision than being able to see it, and being unable to see
- * it was the actual defect.
+ * print, for the people who will never open a terminal.
+ *
+ * It was read-only at first, on the argument that editing the perimeter from a
+ * page every process on this machine can reach is a larger decision than being
+ * able to see it. That is true, and it was still the wrong trade: the answer to
+ * "how do I change this" was "open policy.yaml in an editor", which most people
+ * do not do — so the policy stayed as first written whether or not it described
+ * what anybody wanted. See `PolicyEditor` for what makes the write side safe.
  */
 
 type Tab = "policy" | "substrates" | "ledger"
@@ -203,6 +208,7 @@ export default function PerimeterView() {
   const [onlyHeld, setOnlyHeld] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -231,9 +237,14 @@ export default function PerimeterView() {
           <div className="ak-view-title">Perimeter</div>
           <div className="ak-view-sub">What is allowed, what is reachable, what happened</div>
         </div>
-        <button className="btn" onClick={() => void load()} disabled={loading}>
-          {loading ? "…" : "Refresh"}
-        </button>
+        <div className="view-header-actions">
+          {tab === "policy" && !editing && doc && (
+            <button className="btn" onClick={() => setEditing(true)}>Edit</button>
+          )}
+          <button className="btn" onClick={() => void load()} disabled={loading}>
+            {loading ? "…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       <div className="ak-filter-tabs">
@@ -241,7 +252,7 @@ export default function PerimeterView() {
           <button
             key={t}
             className={`ak-filter-tab ${tab === t ? "active" : ""}`}
-            onClick={() => setTab(t)}
+            onClick={() => { setEditing(false); setTab(t) }}
           >
             {t}
           </button>
@@ -261,7 +272,13 @@ export default function PerimeterView() {
           </div>
         )}
 
-        {!error && tab === "policy" && doc && <PolicyPanel doc={doc} />}
+        {!error && tab === "policy" && editing && (
+          <PolicyEditor
+            onSaved={() => { setEditing(false); void load() }}
+            onCancel={() => setEditing(false)}
+          />
+        )}
+        {!error && tab === "policy" && !editing && doc && <PolicyPanel doc={doc} />}
         {!error && tab === "substrates" && subs && (
           <SubstratesPanel rows={subs.substrates} probed={subs.probed} />
         )}

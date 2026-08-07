@@ -23,6 +23,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from runner.audit.ledger import verify_file
+from runner.cli_setup import choose_model, probe_runtime
 from runner.kernel.errors import ConfigurationError, PolicyError
 from runner.kernel.types import Requirement, SensitivityClass
 from runner.placement.engine import PlacementDecisionEngine
@@ -57,7 +58,9 @@ def _ledger_path() -> Path:
 
 @policy_app.command("init")
 def policy_init(
-    model: str = typer.Option("qwen2.5:14b", "--model", "-m", help="Local model to register"),
+    model: str = typer.Option(
+        None, "--model", "-m", help="Local model to register (default: whichever is installed)"
+    ),
     endpoint: str = typer.Option(
         "http://localhost:11434", "--endpoint", "-e", help="Local runtime endpoint"
     ),
@@ -66,13 +69,22 @@ def policy_init(
     """Write a starting policy. Never overwrites an existing one."""
     target = Path(path) if path else policy_path()
     existed = target.exists()
-    written = write_default_policy(target, local_endpoint=endpoint, local_model=model)
+
+    # The model used to default to a hardcoded qwen2.5:14b whatever the machine
+    # had. Liveness is probed with GET /api/tags, which answers as long as the
+    # *server* is up — so a runtime without that model pulled read as healthy,
+    # the step was placed on it, and the failure arrived from the far side of a
+    # decision already written to the ledger as `placed`. Naming what is
+    # actually installed removes the common case; `annona doctor` names the rest.
+    chosen, why = choose_model(probe_runtime(endpoint).models, model)
+    written = write_default_policy(target, local_endpoint=endpoint, local_model=chosen)
 
     if existed:
         console.print(f"ℹ️  [yellow]A policy already exists at {written} — left untouched.[/yellow]")
         raise typer.Exit(0)
 
     console.print(f"✅ [green]Policy written to[/green] [cyan]{written}[/cyan]")
+    console.print(f"   Local model: [cyan]{chosen}[/cyan] [dim]({why})[/dim]")
     console.print(
         "\nIt registers only your local runtime, so nothing can leave this machine "
         "until you add a substrate yourself."

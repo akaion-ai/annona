@@ -134,10 +134,17 @@ def init(
     ),
 ):
     """
-    🔧 Create the runner configuration
+    🔧 Create the runner configuration, then the policy (same as `annona setup`)
     """
     try:
         config_manager = ConfigManager()
+
+        # No terminal means no answers. Falling through to `typer.prompt` in a
+        # container or a CI job raises on the first question, which is how a
+        # provisioning script discovers that setup is interactive.
+        if interactive and not sys.stdin.isatty():
+            console.print("⚙️  [dim]No terminal — writing the default configuration.[/dim]")
+            interactive = False
 
         if interactive:
             console.print("🔧 [bold]Annona Setup[/bold]\n")
@@ -168,9 +175,21 @@ def init(
         else:
             config_manager.create_default_config()
 
-        console.print("✅ [green]Configuration initialized![/green]")
-        console.print(f"Config file: [cyan]{config_manager.config_path}[/cyan]")
+        console.print(f"  config    [green]written[/green] [dim]{config_manager.config_path}[/dim]")
 
+        # And then the part that used to be missing. `init` reported success
+        # after writing this one file, but the config is not what the kernel
+        # reads: every placement, every refusal and every tool call derives from
+        # ~/.annona/policy.yaml, which only `annona policy init` wrote. So a
+        # first install ended on a green tick and answered the next question
+        # with "no policy". Whatever else `init` asks, it now leaves the machine
+        # in the state its own success message claims.
+        from runner.cli_setup import ensure_policy
+
+        ensure_policy()
+
+    except typer.Exit:
+        raise
     except Exception as e:
         console.print(f"❌ [red]Error during initialization: {e}[/red]")
         raise typer.Exit(1)
@@ -204,15 +223,29 @@ def run(
         auth_manager = AuthManager()
         if not auth_manager.is_authenticated():
             console.print("ℹ️  [dim]Not signed in — starting in local-only mode.[/dim]")
-            console.print("   Open http://127.0.0.1:7070 to use the local vault.")
+            # `--port` moves the server; printing 7070 regardless sent anybody
+            # who used the flag to a page that was not there.
+            console.print(f"   Open http://127.0.0.1:{port} to use the local vault.")
             console.print("   To sync to the cloud, use the sidebar action in the UI,")
             console.print("   or run [cyan]annona login[/cyan].")
 
-        # Load the config
+        # Load the config, writing the defaults if there is none.
+        #
+        # A first start used to fail here with "run `annona init` first", and
+        # `annona init` is interactive — which meant the daemon could not come
+        # up unattended: in a container there is no TTY, so the documented
+        # `docker compose up -d` exited immediately and the appliance never
+        # started. The defaults are the same ones `init` would write without
+        # being asked anything, and they are safe: local-only, cloud off, three
+        # read-only tools. Saying so on stdout keeps it from being a surprise.
         config_manager = ConfigManager()
         if not config_manager.config_exists():
-            console.print("❌ [red]Configuration not found. Run 'annona init' first.[/red]")
-            raise typer.Exit(1)
+            config_manager.create_default_config()
+            console.print(
+                f"⚙️  [dim]No configuration at {config_manager.config_path}; "
+                "wrote the defaults (local-only, cloud off). "
+                "Run [cyan]annona init[/cyan] to change them.[/dim]"
+            )
 
         config = config_manager.load_config()
 
@@ -1014,6 +1047,13 @@ from runner.cli_perimeter import register as _register_perimeter  # noqa: E402
 
 _register_perimeter(app)
 
+# Setup and diagnosis. `setup` is the one command a new install needs; `doctor`
+# is what answers "why does it not work" without anybody having to guess which
+# of two home directories is missing which of two files.
+from runner.cli_setup import register as _register_setup  # noqa: E402
+
+_register_setup(app)
+
 
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
@@ -1021,7 +1061,8 @@ def main_callback(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         print_simple_logo()
         console.print()
-        console.print("Run [cyan]akaion --help[/cyan] for available commands")
+        console.print("Start here: [cyan]annona setup[/cyan], then [cyan]annona run[/cyan]")
+        console.print("All commands: [cyan]annona --help[/cyan]")
         console.print()
 
 

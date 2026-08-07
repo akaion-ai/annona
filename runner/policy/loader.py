@@ -25,6 +25,7 @@ from runner.policy.models import (
     EgressPolicy,
     Policy,
     Rule,
+    SealedSpec,
     SkillPolicy,
     Substrate,
     ToolPolicy,
@@ -112,6 +113,7 @@ def _parse_substrates(raw: Sequence[Any]) -> tuple[Substrate, ...]:
                 jurisdiction=str(body.get("jurisdiction", "world")),
                 endpoint=str(body.get("endpoint", "")),
                 model=str(body.get("model", "")),
+                api_key_env=str(body.get("api_key_env", "")),
                 attestation=str(body.get("attestation", "")),
                 tools=bool(body.get("tools", True)),
                 vision=bool(body.get("vision", False)),
@@ -189,12 +191,35 @@ def _parse_egress(raw: Mapping[str, Any], known: set[str]) -> EgressPolicy:
             "egress mechanism, and restricted material does not leave by any route"
         )
 
+    redact = _require_mapping(raw.get("redact"), "egress.redact")
+    try:
+        redact_allowed = tuple(
+            SensitivityClass.parse(v)
+            for v in _require_sequence(redact.get("allowed_for", []), "egress.redact.allowed_for")
+        )
+    except ValueError as exc:
+        raise PolicyError(f"egress.redact.allowed_for: {exc}") from exc
+
+    sealed_raw = _require_mapping(raw.get("sealed"), "egress.sealed")
+    try:
+        sealed = SealedSpec(
+            paths=tuple(str(p) for p in _require_sequence(sealed_raw.get("paths"), "x")),
+            patterns=tuple(
+                re.compile(str(p), re.IGNORECASE)
+                for p in _require_sequence(sealed_raw.get("patterns"), "x")
+            ),
+        )
+    except re.error as exc:
+        raise PolicyError(f"egress.sealed.patterns: {exc}") from exc
+
     return EgressPolicy(
         brief_produced_by=produced_by,
         brief_max_tokens=int(brief.get("max_tokens", 512)),
         brief_must_clear=bool(brief.get("must_clear", True)),
         allowed_for=allowed,
+        redact_allowed_for=redact_allowed,
         canaries=tuple(str(c) for c in _require_sequence(raw.get("canaries"), "egress.canaries")),
+        sealed=sealed,
     )
 
 
@@ -238,6 +263,11 @@ def _parse_redaction(raw: Mapping[str, Any]) -> RedactionPolicy:
     except ValueError as exc:
         raise PolicyError(f"redaction.default_label_class: {exc}") from exc
 
+    try:
+        floor = SensitivityClass.parse(raw.get("floor", "public"))
+    except ValueError as exc:
+        raise PolicyError(f"redaction.floor: {exc}") from exc
+
     on_error = str(raw.get("on_error", "hold"))
     if on_error not in ("hold", "ignore"):
         raise PolicyError(
@@ -255,6 +285,7 @@ def _parse_redaction(raw: Mapping[str, Any]) -> RedactionPolicy:
         default_label_class=default_class,
         classify=bool(raw.get("classify", False)),
         on_error=on_error,
+        floor=floor,
     )
 
 
@@ -360,6 +391,44 @@ def load_policy(path: str | Path) -> Policy:
     return parse_policy(document or {}, source=str(p))
 
 
+_POLICY_HEADER = (
+    "# Annona policy — what may run, where, and what may cross.\n"
+    "# Every decision the perimeter takes is a function of this file.\n"
+    "# Reference: https://github.com/akaion-ai/annona/blob/main/docs/design/hld.md\n"
+    "#\n"
+    "# Tools are default-deny: one that is not named below does not run. The\n"
+    "# runner ships five — filesystem, shell, browser, document_reader,\n"
+    "# explorer — and this file enables the three that only read. Add the\n"
+    "# others deliberately, with paths, and know what you are doing:\n"
+    "#\n"
+    "#   tools:\n"
+    "#     allow:\n"
+    "#       shell:   []          # no path allow-list means the tool is refused;\n"
+    "#                            # shell has no path argument, so enabling it is\n"
+    "#                            # an all-or-nothing decision. Prefer not to.\n"
+    "#       browser: []          # the browser reaches the network, which is an\n"
+    "#                            # egress this policy cannot classify. Phase 2.\n"
+    "#\n"
+    "# To send material to a model outside this machine, add a substrate and a\n"
+    "# rule that allows it. Nothing here does, on purpose.\n"
+    "#\n"
+    "# Two egress sections are absent and worth knowing about before you need\n"
+    "# them (docs/reference/anonymisation.md):\n"
+    "#\n"
+    "#   egress:\n"
+    "#     redact:\n"
+    "#       allowed_for: [internal]     # replacing identifiers sends the document\n"
+    "#                                   # ENTIRE minus the names. Off until named.\n"
+    "#     sealed:\n"
+    "#       paths:    ['~/Pratiche/M&A/**']\n"
+    "#       patterns: ['Progetto\\s+\\w+', 'term sheet']\n"
+    "#\n"
+    "# A seal is not a class. Classes say where material may run and drop when\n"
+    "# identifiers are removed; a seal survives every transformation, because\n"
+    "# some secrets are the subject rather than the names in it.\n\n"
+)
+
+
 def default_policy_document(
     *,
     local_endpoint: str = "http://localhost:11434",
@@ -378,11 +447,26 @@ def default_policy_document(
         "default": "deny",
         "classes": {
             "restricted": {
-                "paths": ["~/.ssh/**", "~/.gnupg/**", "~/.aws/**", "~/.config/gcloud/**"],
+                "paths": [
+                    "~/.ssh/**",
+                    "~/.gnupg/**",
+                    "~/.aws/**",
+                    "~/.config/gcloud/**",
+                    # Medical imaging, wherever it is on the disk. A DICOM file
+                    # carries a patient's name, date of birth and referring
+                    # physician in its header; classifying it by the folder
+                    # somebody happened to save it in would be a guess, and the
+                    # wrong one the first time a study lands in ~/Downloads.
+                    "/**/*.dcm",
+                    "/**/*.dicom",
+                ],
                 "patterns": [
                     r"[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]",
                     r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
                     r"\bIT\d{2}[A-Z]\d{10}[0-9A-Z]{12}\b",
+                    # DICOM header fields, as they appear in a read of one. Health
+                    # data is restricted by law before it is restricted by policy.
+                    r"\b(?:PatientName|PatientID|PatientBirthDate|StudyInstanceUID)\b",
                 ],
             },
             # `default: true` marks the floor — the class of material nothing
@@ -424,8 +508,16 @@ def default_policy_document(
         ],
         "egress": {"brief": {"produced_by": "local-gpu", "max_tokens": 512, "must_clear": True}},
         "tools": {
+            # `~/Documents/Annona/Inbox` is where the desktop window puts an
+            # attached file. It is listed explicitly, redundant though it is
+            # under `~/Documents/**`, so that an operator who narrows these
+            # paths can see what they are about to switch off.
             "allow": {
-                "document_reader": ["~/Documents/**", "~/Downloads/**"],
+                "document_reader": [
+                    "~/Documents/**",
+                    "~/Downloads/**",
+                    "~/Documents/Annona/Inbox/**",
+                ],
                 "explorer": ["~/Documents/**", "~/Downloads/**"],
                 "filesystem": ["~/Documents/**", "~/Downloads/**"],
             },
@@ -457,6 +549,23 @@ def default_policy(
     )
 
 
+def write_policy_document(path: str | Path, document: dict[str, Any]) -> Path:
+    """Write any policy document to ``path``, with the header. Never overwrites.
+
+    Split out of :func:`write_default_policy` so the profiles in
+    ``runner.policy.profiles`` reach disk through the same function, and every
+    policy this project writes carries the same explanation of what it is —
+    including the ones that were chosen rather than defaulted into.
+    """
+    p = Path(path).expanduser()
+    if p.exists():
+        return p
+    p.parent.mkdir(parents=True, exist_ok=True)
+    body = yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+    p.write_text(_POLICY_HEADER + body, encoding="utf-8")
+    return p
+
+
 def write_default_policy(
     path: str | Path,
     *,
@@ -464,35 +573,7 @@ def write_default_policy(
     local_model: str = "qwen2.5:14b",
 ) -> Path:
     """Write the default policy to ``path``, creating parents. Never overwrites."""
-    p = Path(path).expanduser()
-    if p.exists():
-        return p
-    p.parent.mkdir(parents=True, exist_ok=True)
-    header = (
-        "# Annona policy — what may run, where, and what may cross.\n"
-        "# Every decision the perimeter takes is a function of this file.\n"
-        "# Reference: https://github.com/akaion-ai/annona/blob/main/docs/design/hld.md\n"
-        "#\n"
-        "# Tools are default-deny: one that is not named below does not run. The\n"
-        "# runner ships five — filesystem, shell, browser, document_reader,\n"
-        "# explorer — and this file enables the three that only read. Add the\n"
-        "# others deliberately, with paths, and know what you are doing:\n"
-        "#\n"
-        "#   tools:\n"
-        "#     allow:\n"
-        "#       shell:   []          # no path allow-list means the tool is refused;\n"
-        "#                            # shell has no path argument, so enabling it is\n"
-        "#                            # an all-or-nothing decision. Prefer not to.\n"
-        "#       browser: []          # the browser reaches the network, which is an\n"
-        "#                            # egress this policy cannot classify. Phase 2.\n"
-        "#\n"
-        "# To send material to a model outside this machine, add a substrate and a\n"
-        "# rule that allows it. Nothing here does, on purpose.\n\n"
-    )
-    body = yaml.safe_dump(
+    return write_policy_document(
+        path,
         default_policy_document(local_endpoint=local_endpoint, local_model=local_model),
-        sort_keys=False,
-        allow_unicode=True,
     )
-    p.write_text(header + body, encoding="utf-8")
-    return p

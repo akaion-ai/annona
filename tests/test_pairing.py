@@ -186,3 +186,55 @@ def test_a_custom_origin_list_replaces_the_default(home):
         ).status_code
         == 200
     )
+
+
+# ── The daemon's own interface, on whatever port ──────────────────────────────
+#
+# `annona run --port 7075` serves the interface from 7075, and the interface
+# then calls the daemon at its own origin. With the local list hardcoded to
+# 7070, those calls were treated as a stranger's and refused with "origin
+# http://127.0.0.1:7075 is not paired with this machine" — advice to pair the
+# daemon with itself, which `annona pair` cannot do.
+
+
+def _served_on(port: int, *, peer: str = "127.0.0.1", pairing: Pairing | None = None) -> TestClient:
+    """A client whose requests arrive at `port` from `peer`, as a browser's would."""
+    app = FastAPI()
+    app.add_middleware(PairedOriginMiddleware, pairing=pairing)
+
+    @app.get("/api/kernel/status")
+    def status():
+        return {"enforcing": True}
+
+    return TestClient(app, base_url=f"http://127.0.0.1:{port}", client=(peer, 54321))
+
+
+def test_the_interface_reaches_the_daemon_that_served_it_on_any_port(home):
+    client = _served_on(7075)
+    r = client.get("/api/kernel/status", headers={"Origin": "http://127.0.0.1:7075"})
+    assert r.status_code == 200
+
+
+def test_localhost_and_127_are_the_same_machine(home):
+    """Browsers do not agree on which one to put in the Origin header."""
+    client = _served_on(7075)
+    r = client.get("/api/kernel/status", headers={"Origin": "http://localhost:7075"})
+    assert r.status_code == 200
+
+
+def test_a_different_port_on_the_same_machine_is_still_a_stranger(home):
+    """Another local server is another application, and pairs like any other."""
+    client = _served_on(7075)
+    r = client.get("/api/kernel/status", headers={"Origin": "http://127.0.0.1:9999"})
+    assert r.status_code == 401
+
+
+def test_a_remote_caller_cannot_claim_to_be_the_daemon_itself(home):
+    """Origin and Host are the caller's to write; the peer address is not.
+
+    Without this, exposing the daemon beyond loopback would turn the pairing
+    gate into a matter of sending the right two headers.
+    """
+    client = _served_on(7075, peer="203.0.113.9")
+    r = client.get("/api/kernel/status", headers={"Origin": "http://127.0.0.1:7075"})
+    assert r.status_code == 401

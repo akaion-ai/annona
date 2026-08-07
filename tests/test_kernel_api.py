@@ -312,3 +312,262 @@ def test_ask_passes_the_iteration_budget_through(home):
     executor = _Executor(result={"response": "", "iterations": 1, "tool_calls": []})
     client_for(executor).post("/api/kernel/ask", json={"prompt": "x", "max_iterations": 3})
     assert executor.seen["max_iterations"] == 3
+
+
+# ── Onboarding: the first policy, and only the first ──────────────────────────
+#
+# The window could read the perimeter and never create one, so a .dmg install
+# had to open a terminal before it could answer anything. These routes close
+# that, without becoming a policy editor reachable by every page in the browser.
+
+
+def test_profiles_are_offered_with_their_consequences(home, monkeypatch):
+    from runner import cli_setup
+
+    monkeypatch.setattr(
+        cli_setup,
+        "probe_runtime",
+        lambda *a, **k: cli_setup.RuntimeProbe("x", True, ("qwen2.5:3b",)),
+    )
+
+    body = client_for().get("/api/kernel/profiles").json()
+
+    assert body["configured"] is False
+    assert body["suggested_model"] == "qwen2.5:3b"
+    assert all(p["consequence"] for p in body["profiles"])
+
+
+def test_creating_the_first_policy_makes_the_daemon_enforce(home, monkeypatch):
+    from runner import cli_setup
+
+    monkeypatch.setattr(
+        cli_setup,
+        "probe_runtime",
+        lambda *a, **k: cli_setup.RuntimeProbe("x", True, ("qwen2.5:3b",)),
+    )
+    client = client_for()
+
+    assert client.get("/api/kernel/status").json()["enforcing"] is False
+
+    created = client.post("/api/kernel/policy", json={"profile": "local-only"})
+
+    assert created.status_code == 201
+    assert client.get("/api/kernel/status").json()["enforcing"] is True
+
+
+def test_it_refuses_to_touch_a_policy_that_already_exists(home):
+    """The whole safety property: ungoverned → governed, never sideways."""
+    write_policy(home)
+    before = (home / "policy.yaml").read_text()
+
+    response = client_for().post("/api/kernel/policy", json={"profile": "read-nothing"})
+
+    assert response.status_code == 409
+    assert (home / "policy.yaml").read_text() == before
+
+
+def test_an_unknown_profile_is_refused(home):
+    response = client_for().post("/api/kernel/policy", json={"profile": "trust-me"})
+    assert response.status_code == 422
+
+
+def test_the_frontier_profile_needs_a_provider(home):
+    response = client_for().post("/api/kernel/policy", json={"profile": "frontier-for-public"})
+    assert response.status_code == 422
+
+
+def test_a_created_frontier_policy_caps_the_provider_at_public(home, monkeypatch):
+    from runner import cli_setup
+
+    monkeypatch.setattr(
+        cli_setup,
+        "probe_runtime",
+        lambda *a, **k: cli_setup.RuntimeProbe("x", True, ("qwen2.5:3b",)),
+    )
+    client = client_for()
+
+    response = client.post(
+        "/api/kernel/policy",
+        json={"profile": "frontier-for-public", "provider": "anthropic"},
+    )
+    assert response.status_code == 201
+
+    substrates = client.get("/api/kernel/policy").json()["substrates"]
+    hosted = next(s for s in substrates if s["id"] == "frontier")
+    assert hosted["max_class"] == "public"
+
+
+def test_the_created_policy_never_contains_a_key(home, monkeypatch):
+    """There is no field on the request that could carry one, and this pins it."""
+    from runner import cli_setup
+
+    monkeypatch.setattr(
+        cli_setup,
+        "probe_runtime",
+        lambda *a, **k: cli_setup.RuntimeProbe("x", True, ("qwen2.5:3b",)),
+    )
+
+    client_for().post(
+        "/api/kernel/policy",
+        json={
+            "profile": "frontier-for-public",
+            "provider": "anthropic",
+            "api_key_env": "MY_KEY",
+        },
+    )
+
+    written = (home / "policy.yaml").read_text()
+    assert "MY_KEY" in written
+    assert "sk-" not in written
+
+
+# ── Editing an existing policy ────────────────────────────────────────────────
+#
+# The write side exists because a perimeter nobody adjusts stops describing what
+# anybody wants. What makes it safe is not the UI: it is that nothing invalid
+# reaches disk, nothing is lost, and nothing is quiet.
+
+
+def _valid_yaml(home: Path) -> str:
+    write_policy(home)
+    return (home / "policy.yaml").read_text()
+
+
+def test_the_source_is_offered_with_the_digest_to_edit_against(home):
+    write_policy(home)
+    body = client_for().get("/api/kernel/policy/source").json()
+    assert "substrates:" in body["text"]
+    assert len(body["digest"]) == 64
+
+
+def test_a_valid_replacement_is_written(home):
+    text = _valid_yaml(home).replace("local-gpu", "local-box")
+    response = client_for().put("/api/kernel/policy", json={"yaml": text})
+
+    assert response.status_code == 200
+    assert "local-box" in (home / "policy.yaml").read_text()
+
+
+def test_an_invalid_policy_never_reaches_disk(home):
+    """A daemon whose policy does not load stops enforcing. This is the guard."""
+    before = _valid_yaml(home)
+
+    response = client_for().put(
+        "/api/kernel/policy",
+        json={"yaml": "version: 1\nsubstrates: []\nrules: []\n"},
+    )
+
+    assert response.status_code == 422
+    assert (home / "policy.yaml").read_text() == before
+
+
+def test_malformed_yaml_is_refused_with_the_parser_error(home):
+    _valid_yaml(home)
+    response = client_for().put("/api/kernel/policy", json={"yaml": "substrates: [oops\n"})
+    assert response.status_code == 422
+    assert "not valid YAML" in response.json()["detail"]
+
+
+def test_the_previous_policy_is_always_kept(home):
+    before = _valid_yaml(home)
+    client_for().put("/api/kernel/policy", json={"yaml": before.replace("local-gpu", "box")})
+
+    backups = list(home.glob("policy.yaml.bak-*"))
+    assert backups, "the replaced policy was not kept"
+    assert backups[0].read_text() == before
+
+
+def test_every_replacement_lands_in_the_ledger(home):
+    """Widen, run, narrow back — and there are three entries saying so."""
+    before = _valid_yaml(home)
+    client = client_for()
+
+    client.put("/api/kernel/policy", json={"yaml": before.replace("local-gpu", "box")})
+
+    entries = client.get("/api/kernel/ledger").json()["entries"]
+    change = next(e for e in entries if e["kind"] == "policy")
+    assert change["outcome"] == "replaced"
+    assert change["detail"]["before_digest"] != change["detail"]["after_digest"]
+    # Digests, not contents: the ledger's rule everywhere else.
+    assert "local-gpu" not in json.dumps(change["detail"])
+
+
+def test_a_stale_edit_is_refused_rather_than_applied(home):
+    """The file is editable from a terminal too."""
+    before = _valid_yaml(home)
+    stale = __import__("runner.audit.ledger", fromlist=["digest"]).digest(before)
+
+    # Somebody else changes it in the meantime.
+    (home / "policy.yaml").write_text(before.replace("local-gpu", "box"))
+
+    response = client_for().put(
+        "/api/kernel/policy",
+        json={"yaml": before, "expected_digest": stale},
+    )
+
+    assert response.status_code == 409
+    assert "box" in (home / "policy.yaml").read_text()
+
+
+def test_a_structured_save_keeps_the_explanatory_header(home):
+    """The header is the only documentation of the schema most people will read."""
+    target = home / "policy.yaml"
+    target.write_text("# keep me — this explains the whole file\n" + POLICY)
+
+    document = client_for().get("/api/kernel/policy/source").json()
+    import yaml as yaml_lib
+
+    parsed = yaml_lib.safe_load(document["text"])
+    response = client_for().put("/api/kernel/policy", json={"document": parsed})
+
+    assert response.status_code == 200
+    assert "# keep me" in target.read_text()
+
+
+def test_comments_inside_the_body_are_reported_not_silently_dropped(home):
+    target = home / "policy.yaml"
+    target.write_text(POLICY.replace("substrates:", "# a note from an operator\nsubstrates:"))
+
+    body = client_for().get("/api/kernel/policy/source").json()
+
+    assert body["body_has_comments"] is True
+
+
+def test_a_paired_app_may_run_steps_but_not_change_what_is_permitted(home):
+    """Pairing is a grant to execute, not to govern.
+
+    The middleware lets a paired origin reach every /api/ route, which is right
+    for `ask`. An origin that could also widen the perimeter and then run under
+    it would hold exactly the permissions the perimeter exists to withhold, and
+    nobody was asked about that when they pasted a token.
+    """
+    from runner.pairing import PairedOriginMiddleware, Pairing
+
+    CLOUD = "https://app.akaion.com"
+    text = _valid_yaml(home)
+    pairing = Pairing.create(home / "pairing.json", origins=(CLOUD,))
+
+    app = FastAPI()
+    app.add_middleware(PairedOriginMiddleware, pairing=pairing)
+    app.include_router(kernel_router(None))
+    client = TestClient(app)
+
+    headers = {"Origin": CLOUD, "x-annona-token": pairing.token}
+    response = client.put("/api/kernel/policy", json={"yaml": text}, headers=headers)
+
+    assert response.status_code == 403
+    # And it can still read, which is what pairing was for.
+    assert client.get("/api/kernel/policy", headers=headers).status_code == 200
+
+
+def test_the_window_on_this_machine_may_still_change_it(home):
+    _valid_yaml(home)
+    text = (home / "policy.yaml").read_text().replace("local-gpu", "box")
+
+    response = client_for().put(
+        "/api/kernel/policy",
+        json={"yaml": text},
+        headers={"Origin": "http://127.0.0.1:7070"},
+    )
+
+    assert response.status_code == 200
