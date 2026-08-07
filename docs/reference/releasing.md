@@ -111,14 +111,39 @@ download does not merely warn, it fails, and the release notes have to say so.
 To switch the pipeline on, add these repository secrets. Absent any of them, the
 build takes the ad-hoc path and says which one it took.
 
+Signing, always:
+
 | Secret | What it is |
 |---|---|
 | `APPLE_CERTIFICATE` | base64 of the **Developer ID Application** `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | the password set when exporting it |
+| `APPLE_CERTIFICATE_PASSWORD` | the password the `.p12` was built with |
 | `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Name (TEAMID)` |
-| `APPLE_ID` | the Apple ID that owns the membership |
-| `APPLE_PASSWORD` | an **app-specific password**, not the account password |
 | `APPLE_TEAM_ID` | the 10-character team identifier |
+
+Notarising, one set or the other. **Prefer the API key**: it is not tied to
+anybody's personal Apple ID, it carries only the role it was granted, and it is
+revoked in a click without changing anyone's password.
+
+| Secret | What it is |
+|---|---|
+| `APPLE_API_KEY_P8` | the contents of the `.p8` App Store Connect key |
+| `APPLE_API_KEY_ID` | the key's ID, from the same page |
+| `APPLE_API_ISSUER` | the issuer UUID, shown once above the key list |
+
+The `.p8` downloads **once** and Apple never shows it again. App Store Connect →
+Users and Access → Integrations → App Store Connect API → **+**, role Developer.
+
+The older way, if you must:
+
+| Secret | What it is |
+|---|---|
+| `APPLE_ID` | the Apple ID that owns the membership, an email address |
+| `APPLE_PASSWORD` | an **app-specific password** — `xxxx-xxxx-xxxx-xxxx`, from appleid.apple.com |
+
+Apple rejects the account password here. A build configured with one fails from
+notarytool minutes later with a message about credentials that reads as if the
+account were wrong, which is how an afternoon goes into checking an account that
+was fine.
 
 Creating the certificate needs the Account Holder or Admin role, and it is not
 the "Apple Development" certificate Xcode makes for you — that one cannot sign

@@ -76,16 +76,42 @@ codesign -dv --verbose=2 "$APP" 2>&1 | grep -E "Signature|Sealed Resources|Info.
 #
 # Only with a real identity and credentials. Apple does not notarise an ad-hoc
 # signature, so on that path this is skipped rather than attempted and failed.
+# Two ways to authenticate, and the first is the one to use.
+#
+#   App Store Connect API key — an issuer, a key id, and a .p8. It is not tied
+#   to anybody's personal Apple ID, it carries only the role it was given, and
+#   it is revoked in one click without changing anyone's password.
+#
+#   Apple ID and an app-specific password — the older way. Note *app-specific*:
+#   Apple rejects the account password here, so a build configured with one
+#   fails minutes later, from a service, with a message about credentials that
+#   reads as if the account were wrong.
+#
+# APPLE_API_KEY_P8 holds the key's contents, because a GitHub secret is a
+# string and writing it to a file is this script's job rather than the
+# workflow's — a .p8 left in the workspace is a credential in an artefact.
 notarise() {
   local artefact="$1"
-  if [ "$IDENTITY" = "-" ] || [ -z "${APPLE_ID:-}${APPLE_API_KEY:-}" ]; then
+  if [ "$IDENTITY" = "-" ]; then
     return 0
   fi
+
+  local keyfile=""
+  if [ -n "${APPLE_API_KEY_P8:-}" ]; then
+    keyfile="$(mktemp -t ascapi).p8"
+    printf '%s' "$APPLE_API_KEY_P8" > "$keyfile"
+    # Removed however this function exits, including on a failed submission.
+    trap 'rm -f "$keyfile"' RETURN
+  elif [ -z "${APPLE_ID:-}" ]; then
+    echo "::warning::signed but not notarised — no App Store Connect key and no Apple ID"
+    return 0
+  fi
+
   echo "→ notarising $artefact (this waits for Apple, typically 1-5 minutes)"
-  if [ -n "${APPLE_API_KEY:-}" ]; then
+  if [ -n "$keyfile" ]; then
     xcrun notarytool submit "$artefact" --wait \
-      --key "${APPLE_API_KEY_PATH}" \
-      --key-id "${APPLE_API_KEY}" \
+      --key "$keyfile" \
+      --key-id "${APPLE_API_KEY_ID}" \
       --issuer "${APPLE_API_ISSUER}"
   else
     xcrun notarytool submit "$artefact" --wait \
@@ -93,6 +119,7 @@ notarise() {
       --password "${APPLE_PASSWORD}" \
       --team-id "${APPLE_TEAM_ID}"
   fi
+
   # Stapling puts the ticket inside the file, so the first launch works on a
   # machine that is offline or behind a firewall that eats Apple's OCSP.
   xcrun stapler staple "$artefact"
