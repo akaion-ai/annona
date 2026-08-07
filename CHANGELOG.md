@@ -6,6 +6,33 @@ Notable changes to this project. Format based on
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-08-03
+
+### Updates can actually be delivered
+
+0.1.0 shipped with the updater switched on, pointing at a `latest.json` that did
+not exist, and verifying against `"PLACEHOLDER_PUBLIC_KEY_GENERATED_BY_TAURI_SIGNER"`.
+No signing key existed in the repository, so every bundle was built unsigned and
+no `.sig` was emitted; `build-manifest.sh` then did the right thing and published
+without a manifest rather than pretending. The result was an app that makes a
+silent GET to a 404 on every launch and would reject any signature it did receive.
+
+The key now exists, its public half is in `tauri.conf.json`, and this release
+carries the `.sig` files and the manifest.
+
+**0.1.0 installations will not auto-update to this release.** They were built
+against the placeholder key and will reject anything signed with the real one.
+Reinstalling once from the releases page is the only way across; from 0.1.1
+onward updates arrive on their own.
+
+### Published, for the first time
+
+0.1.0 was the first tag whose bundles reached a GitHub Release at all — the tag
+had been sitting on a commit whose Apple Silicon dmg step failed, so the release
+job never ran and every download button on the site led to an empty page. The
+Python package went up the same day: `pip install annona` is now true, via PyPI
+Trusted Publishing rather than a stored token.
+
 ### The desktop app is Annona, and there is a site
 
 The Tauri shell, the PyInstaller sidecar, the bundle names and the release

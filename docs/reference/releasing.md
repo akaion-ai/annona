@@ -30,25 +30,61 @@ git push origin main --tags
 ### 3. What CI does
 
 The `build` job runs in parallel on four runners: `macos-14` (Apple silicon),
-`macos-13` (Intel), `windows-latest`, `ubuntu-22.04`. Each one sets up Python
-3.11, Node 20 and stable Rust, builds the UI with Vite, produces the PyInstaller
-sidecar, runs `tauri build --target <triple>`, and uploads the artefacts.
+`macos-15-intel` (Intel), `windows-latest`, `ubuntu-22.04`. Each one sets up
+Python 3.11, Node 20 and stable Rust, builds the UI with Vite, produces the
+PyInstaller sidecar, runs `tauri build --target <triple>`, and uploads the
+artefacts.
+
+> `macos-13` was retired in December 2025 and its label no longer resolves to a
+> machine. A job asking for it queues until the run is cancelled, which is how
+> v0.1.0 first stalled.
 
 The `release` job runs only on a tag push. It collects every artefact, flattens
-them into `release-assets/`, and opens a **draft** GitHub Release marked
-prerelease.
+them into `release-assets/`, builds the updater manifest, and **publishes** the
+GitHub Release.
 
-### 4. Review and publish
+### 4. Check the result
 
-Check the draft has all the expected assets — two `.dmg`, one `.exe`, one
-`.AppImage`, one `.deb`; the Windows `.msi` is optional — then press **Publish
-release**.
+Neither a draft nor a prerelease, and both are deliberate:
+
+- A **draft** is invisible to everyone but the maintainer, so
+  `releases/latest/download/...` does not resolve to it — every download button
+  on the site 404s while the run shows green.
+- GitHub's `latest` pointer **skips prereleases**, with the same result.
+
+"Beta, unsigned" is said in words, in the release body and on the site, which is
+where that belongs. So there is nothing to press: check the published release has
+all the expected assets — two `.dmg`, one `.exe`, one `.AppImage`, one `.deb`,
+plus the `.sig` files and `latest.json`; the Windows `.msi` is optional.
 
 ### Smoke-testing without releasing
 
 GitHub → Actions → **release** → **Run workflow**, and pick a branch. The
 `release` job is skipped (it is gated on `startsWith(github.ref, 'refs/tags/v')`),
 and the bundles are downloadable from the run's artefacts for 14 days.
+
+## The Python package
+
+`pip install annona` is advertised in the README and on the site, so it has to
+work. `.github/workflows/publish-pypi.yml` builds the sdist and wheel and
+publishes them on every **published** GitHub Release, keeping the desktop
+bundles and the Python package on the same version by construction.
+
+Uploads use **PyPI Trusted Publishing** (OIDC), not an API token: no credential
+is stored in repository secrets, and none can leak from a repo that never held
+one. It needs two things to exist, once, and neither can be created from CI:
+
+1. A pending publisher at <https://pypi.org/manage/account/publishing/> —
+   project `annona`, owner `akaion-ai`, repository `annona`, workflow
+   `publish-pypi.yml`, environment `pypi`.
+2. A `pypi` environment under **Settings → Environments**.
+
+What the wheel contains is `runner*` and nothing else, which has one consequence
+worth knowing before someone reports it as a bug: **the web UI is not in the
+Python package.** `_UI_DIST` resolves relative to the installed package, so a
+pip installation has no `ui/dist` and `runner/local_api.py` skips the static
+mount with a warning. The CLI and the daemon API are complete; the window is
+what the desktop bundles are for.
 
 ### Time and cost
 
