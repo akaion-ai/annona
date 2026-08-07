@@ -7,9 +7,12 @@ import BrainView    from "./components/views/BrainView";
 import SyncView     from "./components/views/SyncView";
 import TasksView    from "./components/views/TasksView";
 import WelcomeView, { ONBOARDING_FLAG } from "./components/views/WelcomeView";
+import SetupView from "./components/views/SetupView";
 import UpdateBanner from "./components/UpdateBanner";
 import { signIn, isSigninHandoff } from "./lib/signin";
 import { auth as authApi, runner as runnerApi, sync as syncApi, AuthStatus, RunnerMode } from "./api/runner";
+import { API_ORIGIN } from "./api/base";
+import { kernel as kernelApi } from "./api/kernel";
 import "./App.css";
 import "./css/auth-animations.css";
 
@@ -44,6 +47,9 @@ export default function App() {
   const [cloudSyncing, setCloudSyncing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [noteCount, setNoteCount]       = useState<number | null>(null);
+  // null until the daemon has been asked. Rendering the app before that is
+  // known would flash the Ask box at somebody who has not chosen a policy.
+  const [configured, setConfigured]     = useState<boolean | null>(null);
   const settingsRef = useRef<HTMLDivElement | null>(null);
 
   // Close popover when clicking outside.
@@ -72,6 +78,27 @@ export default function App() {
   useEffect(() => {
     if (status === "stopped") start();
   }, []); // eslint-disable-line
+
+  // Does this machine have a policy at all? Until it does, the kernel is not
+  // enforcing, and every answer the app could give would come from a machine
+  // that has decided nothing. That question is asked before the app is shown,
+  // not reported in small type at the bottom of it.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const opts = await kernelApi.setupOptions();
+        if (!cancelled) setConfigured(opts.configured);
+      } catch {
+        // The daemon is not up yet. Retry rather than assume either answer:
+        // guessing "configured" hides the chooser, guessing the opposite shows
+        // it to somebody who already has a policy.
+        if (!cancelled) setTimeout(check, 1000);
+      }
+    };
+    check();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +186,18 @@ export default function App() {
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
+  // The policy comes before the vault. Somebody who has not chosen where their
+  // work may run has not finished installing this, whatever else they signed
+  // into — and the signin handoff tab is about one thing, so it is exempt.
+  if (configured === false && !isSigninHandoff()) {
+    return (
+      <>
+        <UpdateBanner />
+        <SetupView onDone={() => setConfigured(true)} />
+      </>
+    );
+  }
+
   if (showWelcome) {
     return (
       <>
@@ -241,7 +280,7 @@ export default function App() {
 
           {/* Account block — authed */}
           {isAuthed && (
-            <div className="ak-cloud-badge" role="region" aria-label="Modalità cloud">
+            <div className="ak-cloud-badge" role="region" aria-label="Cloud mode">
               <div className="ak-cloud-badge__row">
                 <span className="ak-cloud-badge__dot ak-cloud-badge__dot--online" />
                 <span style={{ fontSize: 12, fontWeight: 500 }}>Cloud sync</span>
@@ -267,8 +306,8 @@ export default function App() {
           <button
             className="ak-icon-btn"
             onClick={() => setSettingsOpen((v) => !v)}
-            title="Impostazioni"
-            aria-label="Impostazioni"
+            title="Settings"
+            aria-label="Settings"
           >
             <SettingsIcon size={14} />
           </button>
@@ -329,7 +368,10 @@ export default function App() {
         </div>
         <div className="ak-statusbar__sep" />
         <div className="ak-statusbar__item ak-statusbar__item--muted">
-          <span>127.0.0.1:7070</span>
+          {/* The daemon this window is actually talking to. It was written out
+              as 127.0.0.1:7070, which is a claim rather than a reading the
+              moment anybody uses --port. */}
+          <span>{API_ORIGIN.replace(/^https?:\/\//, "")}</span>
         </div>
         <div className="ak-statusbar__sep" />
         <div className="ak-statusbar__item">

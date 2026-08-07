@@ -8,7 +8,9 @@ export interface RunnerLog {
   ts: number;
 }
 
-const API_BASE = "http://localhost:7070";
+import { API_ORIGIN } from "../api/base";
+
+const API_BASE = API_ORIGIN;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tauri detection + safe invoke wrapper

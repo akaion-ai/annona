@@ -61,7 +61,7 @@ export default function UpdateBanner() {
         )}
         {phase === "installing" && (
           <span style={{ color: "var(--text-sub, #8b949e)", fontSize: 11 }}>
-            Installazione…
+            Installing…
           </span>
         )}
         {errored && error && (

@@ -1,4 +1,6 @@
-const BASE = "http://localhost:7070/api"
+import { API_ORIGIN } from "./base"
+
+const BASE = `${API_ORIGIN}/api`
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {

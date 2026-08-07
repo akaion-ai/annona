@@ -1,4 +1,5 @@
 import { useRunner } from "../../hooks/useRunner"
+import { API_ORIGIN } from "../../api/base";
 
 export default function TasksView() {
   const { status, logs, start, stop } = useRunner()
@@ -25,7 +26,7 @@ export default function TasksView() {
             <span className={`status-dot ${status}`} />
             <span style={{ textTransform: "capitalize" }}>{status}</span>
             {status === "running" && (
-              <span className="text-sub" style={{ fontSize: 11 }}>· polling · API on localhost:7070</span>
+              <span className="text-sub" style={{ fontSize: 11 }}>· polling · API on {API_ORIGIN.replace(/^https?:\/\//, "")}</span>
             )}
           </div>
         </div>

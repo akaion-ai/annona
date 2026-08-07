@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { sync, SyncStatus } from "../../api/runner"
 import { CloudUpIcon } from "../ui/Icons"
+import { API_ORIGIN } from "../../api/base";
 
 function StatCard({ number, label, color }: { number: number; label: string; color?: string }) {
   return (
@@ -67,7 +68,7 @@ export default function SyncView() {
       <div className="view-body">
         {runnerDown ? (
           <div className="card">
-            <p className="text-muted">Daemon not reachable on <code>localhost:7070</code>.</p>
+            <p className="text-muted">Daemon not reachable on <code>{API_ORIGIN.replace(/^https?:\/\//, "")}</code>.</p>
           </div>
         ) : loading ? (
           <p className="text-sub">Loading…</p>

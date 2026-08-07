@@ -4,7 +4,9 @@
 // these are the routes that answer "where did this run, and why", and mixing
 // them with note CRUD would bury the one part of the app that is the product.
 
-const BASE = "http://localhost:7070/api/kernel"
+import { API_ORIGIN } from "./base"
+
+const BASE = `${API_ORIGIN}/api/kernel`
 
 export class KernelError extends Error {
   constructor(readonly status: number, readonly detail: string) {
@@ -103,6 +105,19 @@ export interface Decision {
   hash: string
 }
 
+/** One payload that left this machine. Held in memory by the daemon, never on disk. */
+export interface Egress {
+  kind: "redacted" | "briefed" | "verbatim"
+  substrate: string
+  jurisdiction: string
+  class: string
+  text: string
+  redactor?: string
+  replaced?: number
+  labels?: Record<string, number>
+  written_by?: string
+}
+
 export interface AskResult {
   response: string
   iterations: number
@@ -110,13 +125,140 @@ export interface AskResult {
   placement: { class: string; outcome: string; substrate: string; reason: string } | null
   enforced: boolean
   decisions: Decision[]
+  // named: files put in front of the run. shown: the subset a substrate was
+  // actually allowed to look at. The two differ, and saying so is the point.
+  attachments?: { named: number; shown: number }
+  // What crossed, verbatim, and why nothing could.
+  egress?: Egress[]
+  sealed?: string
+}
+
+export interface AttachmentInfo {
+  id: string
+  name: string
+  path: string
+  bytes: number
+  family: string
+  format: string
+  class: string
+  readable: boolean
+  reason?: string
+  fix?: string
+  preview: string
+  // One line of fact from the reader that parsed it: pages, duration, sheets,
+  // invoice number, who signed it.
+  headline?: string
+  // Whether the daemon can render a picture of this file. Known at intake so
+  // the card can reserve the space instead of reflowing when one arrives.
+  thumbnail?: boolean
+  warnings: string[]
+  media: { path: string; media_type: string; label: string; derived: boolean }[]
+  metadata?: Record<string, any>
+}
+
+/** Where the window fetches the picture of an attachment. Loopback only. */
+export const THUMBNAIL_URL = (id: string) => `${BASE}/attachments/${id}/thumbnail`
+
+export interface FormatSupport {
+  inbox: string
+  inbox_short: string
+  max_upload_mb: number
+  extensions: string[]
+  vision: boolean
+  families: Record<string, { ready: boolean; extensions: string[]; install: string }>
+  extras: Record<string, boolean>
 }
 
 // ── Calls ─────────────────────────────────────────────────────────────────────
 
+export interface PolicySource {
+  path: string
+  /** The file, byte for byte. What the text editor edits. */
+  text: string
+  /** The same file as data, parsed by the daemon. What the fields edit. */
+  document: any
+  digest: string
+  /** True when a structured save would drop a comment somebody wrote in the
+   *  body. The editor steers to the text mode instead of deleting it. */
+  body_has_comments: boolean
+}
+
+export interface ReplacePolicyBody {
+  document?: any
+  yaml?: string
+  expected_digest?: string
+}
+
+export interface PolicyProfile {
+  id: string
+  title: string
+  summary: string
+  /** What this choice means for material leaving the machine. The sentence the
+   *  person is agreeing to — shown in full, never truncated into a tooltip. */
+  consequence: string
+  needs_frontier: boolean
+  recommended: boolean
+}
+
+export interface FrontierProviderInfo {
+  id: string
+  title: string
+  model: string
+  endpoint: string
+  api_key_env: string
+  jurisdiction: string
+}
+
+export interface SetupOptions {
+  configured: boolean
+  policy_path: string
+  runtime: { endpoint: string; reachable: boolean; models: string[]; detail: string }
+  suggested_model: string
+  suggested_reason: string
+  profiles: PolicyProfile[]
+  providers: FrontierProviderInfo[]
+}
+
+export interface CreatePolicyBody {
+  profile: string
+  model?: string
+  readable_paths?: string[]
+  provider?: string
+  provider_model?: string
+  provider_endpoint?: string
+  /** The NAME of the environment variable holding the key. Never the key: the
+   *  daemon has no field that would accept one. */
+  api_key_env?: string
+}
+
 export const kernel = {
   status:     () => req<KernelStatus>("/status"),
   policy:     () => req<PolicyDoc>("/policy"),
+
+  // ── Editing the policy ──────────────────────────────────────────────────────
+  // `source` gives the file both ways: as text, and as the document the server
+  // already parsed — so the editor can offer fields without a YAML parser in
+  // the browser, and the two views cannot disagree about what the file says.
+  //
+  // `replacePolicy` sends `expected_digest` so an edit made against a stale
+  // read is refused rather than applied: this file is editable from a terminal
+  // too, and a form submitted ten minutes ago must not silently win.
+  policySource: () => req<PolicySource>("/policy/source"),
+  replacePolicy: (body: ReplacePolicyBody) =>
+    req<{ path: string; digest: string; backup: string; step_id: string }>("/policy", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  // ── Onboarding ──────────────────────────────────────────────────────────────
+  // `createPolicy` writes the *first* policy and 409s if one exists. See
+  // runner/kernel_api.py for why that asymmetry is the safety property.
+  setupOptions: () => req<SetupOptions>("/profiles"),
+  createPolicy: (body: CreatePolicyBody) =>
+    req<{ path: string; profile: string; model: string; consequence: string }>("/policy", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   substrates: (probe = true) => req<{ probed: boolean; substrates: SubstrateHealth[] }>(
     `/substrates?probe=${probe}`,
   ),
@@ -133,8 +275,43 @@ export const kernel = {
   verify:     () => req<{ path: string; ok: boolean; entries: number; problem: string; empty: boolean }>(
     "/ledger/verify",
   ),
-  ask:        (prompt: string, maxIterations = 8) => req<AskResult>("/ask", {
-    method: "POST",
-    body: JSON.stringify({ prompt, max_iterations: maxIterations }),
-  }),
+  ask:        (
+    prompt: string,
+    attachments: string[] = [],
+    opts: { escalate?: boolean; maxIterations?: number } = {},
+  ) =>
+    req<AskResult>("/ask", {
+      method: "POST",
+      body: JSON.stringify({
+        prompt,
+        attachments,
+        escalate: Boolean(opts.escalate),
+        max_iterations: opts.maxIterations ?? 8,
+      }),
+    }),
+
+  // ── Attachments ─────────────────────────────────────────────────────────────
+  formats:    () => req<FormatSupport>("/formats"),
+  attachments: (limit = 30) => req<{ inbox: string; attachments: AttachmentInfo[] }>(
+    `/attachments?limit=${limit}`,
+  ),
+  detach:     (id: string) => req<{ deleted: string }>(`/attachments/${id}`, { method: "DELETE" }),
+
+  // No Content-Type header on purpose: the browser has to set the multipart
+  // boundary itself, and the JSON default in `req` would make the daemon reject
+  // the body it is about to receive.
+  attach:     async (file: File): Promise<AttachmentInfo> => {
+    const body = new FormData()
+    body.append("file", file)
+    const res = await fetch(`${BASE}/attachments`, { method: "POST", body })
+    if (!res.ok) {
+      let detail = `${res.status}`
+      try {
+        const parsed = await res.json()
+        if (typeof parsed?.detail === "string") detail = parsed.detail
+      } catch { /* body was not JSON */ }
+      throw new KernelError(res.status, detail)
+    }
+    return res.json()
+  },
 }

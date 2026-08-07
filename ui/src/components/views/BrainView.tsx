@@ -4,6 +4,7 @@ import { markdown } from "@codemirror/lang-markdown"
 import { oneDark } from "@codemirror/theme-one-dark"
 import { brain, BrainNote } from "../../api/runner"
 import { PlusIcon, SearchIcon, CloudUpIcon, TrashIcon, TagIcon, ClusterIcon, BrainIcon } from "../ui/Icons"
+import { API_ORIGIN } from "../../api/base";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -335,8 +336,8 @@ export default function BrainView() {
       {runnerDown ? (
         <div className="view-body">
           <div className="card">
-            <p className="text-muted">Daemon not reachable on <code>localhost:7070</code>.</p>
-            <p className="text-sub" style={{ marginTop: 4, fontSize: 12 }}>Start the runner from the bar di stato.</p>
+            <p className="text-muted">Daemon not reachable on <code>{API_ORIGIN.replace(/^https?:\/\//, "")}</code>.</p>
+            <p className="text-sub" style={{ marginTop: 4, fontSize: 12 }}>Start the runner from the status bar.</p>
           </div>
         </div>
       ) : loading ? (

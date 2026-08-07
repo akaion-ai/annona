@@ -707,6 +707,231 @@ html, body { font-feature-settings: "ss01", "cv11"; }
 .an-decision__step { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
 .an-decision__why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Attachments ──────────────────────────────────────────────────────────────
+   A file dropped here may be somebody's client file or somebody's scan. The
+   card is built like a record, not like a notification: a face so it can be
+   recognised, one line of fact, the class the perimeter gave it, and anything
+   that is wrong with it — in that order, at the density of the rest of the app.
+   The only colour that moves is the class. */
+
+.an-chat { position: relative; }
+
+.an-drop {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(13,17,23,0.82);
+  backdrop-filter: blur(2px);
+  animation: an-fade 120ms ease-out;
+}
+.an-drop__inner {
+  border: 1px dashed hsl(var(--an-accent) / 0.5);
+  border-radius: 12px; padding: 26px 34px; text-align: center;
+  background: rgba(22,27,34,0.9);
+  box-shadow: 0 18px 48px rgba(0,0,0,0.45);
+}
+.an-drop__title { font-size: 14px; font-weight: 600; letter-spacing: -0.2px; }
+.an-drop__sub { margin-top: 7px; font-size: 11.5px; color: var(--text-muted); line-height: 1.7; }
+.an-drop__sub code, .an-tray__vow code, .an-pop__foot code {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-sub);
+}
+
+@keyframes an-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes an-rise { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+
+/* ── The tray above the composer ─────────────────────────────────────────── */
+
+.an-tray {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 11px 24px 2px; background: var(--bg-surface);
+  border-top: 1px solid var(--border-sub);
+}
+.an-tray__head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 10.5px; color: var(--text-sub);
+}
+.an-tray__count { font-family: var(--font-mono); color: var(--text-muted); }
+.an-tray__hot { color: var(--red); }
+.an-tray__vow { margin-left: auto; }
+.an-tray__note { font-size: 11px; color: var(--text-muted); line-height: 1.55; white-space: pre-wrap; }
+.an-tray__note--bad { color: var(--red); }
+
+.an-cards { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.an-cards--sent { align-self: flex-end; justify-content: flex-end; max-width: 82%; }
+
+/* ── One card ────────────────────────────────────────────────────────────── */
+
+.an-card {
+  position: relative;
+  min-width: 216px; max-width: 320px;
+  border: 1px solid var(--border-sub); border-radius: 9px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012));
+  animation: an-rise 160ms ease-out both;
+  overflow: hidden;
+}
+.an-card::before {
+  /* The class, as a two-pixel edge. Reading the colour is faster than reading
+     the word, and the word is right there when the colour is not enough. */
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: var(--text-sub);
+}
+.an-card[data-class="internal"]::before   { background: var(--yellow); }
+.an-card[data-class="restricted"]::before { background: var(--red); }
+.an-card[data-class="public"]::before     { background: var(--green); }
+.an-card:hover { border-color: var(--border); }
+.an-card--blocked { border-color: rgba(248,81,73,0.32); }
+.an-card--compact { min-width: 0; max-width: 230px; opacity: 0.9; }
+.an-card--compact .an-card__body { padding: 5px 9px; gap: 7px; }
+.an-card--compact .an-card__face { width: 22px; height: 22px; border-radius: 4px; }
+.an-card--compact .an-card__face svg { width: 13px; height: 13px; }
+.an-card--compact .an-card__name { font-size: 11.5px; }
+.an-card--compact .an-card__facts { font-size: 9.5px; }
+.an-card--compact .an-card__class { font-size: 8.5px; padding: 1px 4px; }
+
+.an-card__body {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 30px 8px 11px;
+  background: none; border: none; text-align: left; cursor: pointer;
+  color: inherit; font: inherit;
+}
+.an-card__body[aria-expanded] { cursor: pointer; }
+
+.an-card__face {
+  flex: none; width: 34px; height: 34px; border-radius: 6px;
+  display: grid; place-items: center; overflow: hidden;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-sub);
+  color: var(--text-muted);
+}
+.an-card__face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.an-card__face--wait {
+  background: linear-gradient(100deg, rgba(255,255,255,0.03) 30%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.03) 70%);
+  background-size: 220% 100%;
+  animation: an-sweep 1.1s linear infinite;
+}
+@keyframes an-sweep { from { background-position: 140% 0 } to { background-position: -40% 0 } }
+
+.an-card__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.an-card__name {
+  font-size: 12px; color: var(--text); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.an-card__facts {
+  display: flex; gap: 6px; align-items: baseline; min-width: 0;
+  font-family: var(--font-mono); font-size: 10px;
+}
+.an-card__format { color: hsl(var(--an-accent) / 0.85); flex: none; }
+.an-card__dim { color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.an-card__class {
+  flex: none; font-family: var(--font-mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 2px 5px; border-radius: 3px; color: var(--text-sub);
+  background: rgba(255,255,255,0.04);
+}
+.an-card__class--internal   { color: var(--yellow); background: rgba(210,153,34,0.12); }
+.an-card__class--restricted { color: var(--red);    background: rgba(248,81,73,0.13); }
+.an-card__class--public     { color: var(--green);  background: rgba(63,185,80,0.12); }
+
+.an-card__x {
+  position: absolute; top: 6px; right: 6px;
+  width: 18px; height: 18px; border-radius: 4px;
+  display: grid; place-items: center; cursor: pointer;
+  background: none; border: none; color: var(--text-sub); opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+.an-card:hover .an-card__x, .an-card__x:focus-visible { opacity: 1; }
+.an-card__x:hover { color: var(--text); background: var(--bg-hover); }
+
+.an-card__note {
+  padding: 0 11px 9px 11px; font-size: 10.5px; line-height: 1.5;
+  color: var(--text-sub);
+}
+.an-card__note--bad { color: var(--red); }
+.an-card__fix {
+  margin-top: 5px; padding: 6px 8px; border-radius: 5px;
+  background: rgba(0,0,0,0.28); color: var(--text-muted);
+  font-family: var(--font-mono); font-size: 10px; line-height: 1.5;
+  white-space: pre-wrap; overflow-x: auto;
+}
+.an-card__preview {
+  margin: 0 9px 9px; padding: 8px 10px; max-height: 190px; overflow: auto;
+  border-radius: 6px; background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border-sub);
+  font-family: var(--font-mono); font-size: 10.5px; line-height: 1.55;
+  color: var(--text-muted); white-space: pre-wrap; word-break: break-word;
+  animation: an-rise 140ms ease-out both;
+}
+
+/* ── The attach control ──────────────────────────────────────────────────── */
+
+.an-attach-wrap { position: relative; flex: none; }
+.an-attach {
+  width: 34px; height: 34px; border-radius: 9px; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--bg-base); color: var(--text-muted);
+  border: 1px solid var(--border);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.an-attach:hover:not(:disabled) {
+  color: hsl(var(--an-accent)); border-color: hsl(var(--an-accent) / 0.55);
+  background: hsl(var(--an-accent) / 0.08);
+}
+.an-attach:disabled { opacity: 0.4; cursor: default; }
+.an-attach__more {
+  position: absolute; top: -5px; right: -5px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--bg-overlay); border: 1px solid var(--border);
+  color: var(--text-sub); font-size: 9px; line-height: 1; cursor: pointer;
+  display: grid; place-items: center; padding: 0;
+}
+.an-attach__more:hover { color: var(--text); border-color: var(--text-sub); }
+
+/* ── "What can this machine read" ────────────────────────────────────────── */
+
+.an-pop__scrim { position: absolute; inset: 0; z-index: 30; background: rgba(13,17,23,0.55); }
+.an-pop {
+  position: absolute; z-index: 31; left: 20px; right: 20px; bottom: 74px;
+  max-width: 560px; max-height: 62%; overflow: auto;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 20px 56px rgba(0,0,0,0.5);
+  animation: an-rise 140ms ease-out both;
+}
+.an-pop__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 13px 16px 10px; border-bottom: 1px solid var(--border-sub);
+  font-size: 12.5px; font-weight: 600;
+}
+.an-pop__count { font-family: var(--font-mono); font-size: 10px; color: var(--text-sub); font-weight: 400; }
+.an-pop__grid { padding: 8px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 1px 10px; }
+.an-pop__row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 6px; font-size: 11.5px;
+}
+.an-pop__row:hover { background: rgba(255,255,255,0.03); }
+.an-pop__glyph { color: var(--text-muted); display: grid; place-items: center; }
+.an-pop__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-pop__ok { font-family: var(--font-mono); font-size: 9.5px; color: var(--green); }
+.an-pop__row--off { color: var(--text-sub); }
+.an-pop__row--off .an-pop__glyph { color: var(--text-sub); opacity: 0.6; }
+.an-pop__install {
+  font-family: var(--font-mono); font-size: 9.5px; color: var(--yellow);
+  background: rgba(210,153,34,0.1); padding: 1px 5px; border-radius: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 168px;
+}
+.an-pop__extras {
+  display: flex; flex-wrap: wrap; gap: 6px 14px;
+  padding: 9px 16px; border-top: 1px solid var(--border-sub);
+  font-size: 10.5px; color: var(--text-sub);
+}
+.an-pop__extras .on { color: var(--text-muted); }
+.an-pop__foot {
+  padding: 10px 16px 13px; border-top: 1px solid var(--border-sub);
+  font-size: 10.5px; color: var(--text-muted); line-height: 1.7;
+}
+.an-pop__foot--dim { color: var(--text-sub); }
+
+.an-empty__link { margin-top: 12px; display: inline-block; font-size: 11.5px; }
+
 .an-composer {
   display: flex; align-items: flex-end; gap: 10px;
   padding: 12px 24px 16px; border-top: 1px solid var(--border-sub); background: var(--bg-surface);
@@ -747,3 +972,229 @@ html, body { font-feature-settings: "ss01", "cv11"; }
 .an-ledger-head { display: flex; align-items: center; gap: 16px; font-size: 11.5px; flex-wrap: wrap; }
 .an-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-muted); cursor: pointer; }
 .an-error { color: var(--red); font-size: 12.5px; line-height: 1.6; }
+
+/* ── What crossed ─────────────────────────────────────────────────────────────
+   The one panel in this app that is allowed to be loud. Everything else reports
+   where a turn ran; this reports what left the machine, and an operator who
+   never reads it is an operator trusting a claim nobody showed them. */
+
+.an-egress {
+  border: 1px solid rgba(210,153,34,0.3);
+  border-left: 2px solid var(--yellow);
+  border-radius: 7px; padding: 9px 11px;
+  background: rgba(210,153,34,0.05);
+  display: flex; flex-direction: column; gap: 7px;
+}
+.an-egress--verbatim { border-color: rgba(248,81,73,0.32); border-left-color: var(--red); background: rgba(248,81,73,0.05); }
+.an-egress--sealed   { border-color: rgba(63,185,80,0.3);  border-left-color: var(--green); background: rgba(63,185,80,0.05); }
+
+.an-egress__head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; font-size: 11.5px; }
+.an-egress__kind { font-weight: 600; color: var(--text); }
+.an-egress__where, .an-egress__why { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+.an-egress__juris { color: var(--red); }
+.an-egress__toggle { margin-left: auto; }
+
+.an-egress__labels { font-size: 11px; color: var(--text-muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.an-egress__labels strong { color: var(--text); }
+.an-egress__by { color: var(--text-sub); font-family: var(--font-mono); font-size: 10px; }
+.an-egress__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.an-egress__tag {
+  font-family: var(--font-mono); font-size: 9.5px; padding: 1px 5px; border-radius: 3px;
+  background: rgba(255,255,255,0.05); color: var(--text-muted);
+}
+
+.an-egress__text {
+  max-height: 260px; overflow: auto; padding: 9px 11px; border-radius: 6px;
+  background: rgba(0,0,0,0.32); border: 1px solid var(--border-sub);
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+  color: var(--text-muted); white-space: pre-wrap; word-break: break-word;
+}
+/* Every substitution, countable by eye. This is the "you can see it was
+   anonymised" moment, and it has to survive being skimmed. */
+.an-egress__ph {
+  background: hsl(var(--an-accent) / 0.18); color: hsl(var(--an-accent));
+  border-radius: 3px; padding: 0 3px; font-weight: 600;
+}
+.an-egress__note { font-size: 11px; line-height: 1.6; color: var(--text-muted); }
+.an-egress__note em { color: var(--text); font-style: normal; font-weight: 600; }
+
+.an-escalate {
+  flex: none; height: 34px; padding: 0 11px; border-radius: 9px; cursor: pointer;
+  background: var(--bg-base); color: var(--text-sub);
+  border: 1px solid var(--border); font-size: 11.5px; white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.an-escalate:hover { color: var(--text-muted); }
+.an-escalate.on {
+  color: hsl(var(--an-accent)); border-color: hsl(var(--an-accent) / 0.55);
+  background: hsl(var(--an-accent) / 0.1);
+}
+
+/* ── First-run configurator ───────────────────────────────────────────────────
+   The one screen that appears before the app does, on a machine with no policy.
+   Deliberately a single scrolling column rather than a stepped wizard: all three
+   questions and their consequences are visible at once, so nobody agrees to
+   something they have to click "back" to re-read. */
+
+.an-setup { min-height: 100%; overflow-y: auto; background: var(--bg-base); padding: 40px 20px 60px; }
+.an-setup__card { max-width: 680px; margin: 0 auto; }
+
+.an-setup__head h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 8px; }
+.an-setup__head p { color: var(--text-muted); font-size: 13px; line-height: 1.6; margin-bottom: 4px; }
+.an-setup__head code { font-size: 12px; color: var(--text); background: var(--bg-surface); padding: 1px 5px; border-radius: 4px; }
+
+.an-setup__step { margin-top: 30px; }
+.an-setup__step h2 { font-size: 13px; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.1px; }
+
+.an-setup__models { display: flex; flex-wrap: wrap; gap: 8px; }
+.an-setup__chip { background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 7px; padding: 7px 12px; font-size: 12px; font-family: inherit; cursor: pointer; transition: all 0.12s; }
+.an-setup__chip:hover { border-color: var(--bg-hover); color: var(--text); }
+.an-setup__chip.on { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.an-setup__hint { color: var(--text-sub); font-size: 11px; }
+
+.an-setup__profiles { display: flex; flex-direction: column; gap: 8px; }
+.an-setup__profile { text-align: left; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 9px; padding: 13px 15px; cursor: pointer; font-family: inherit; transition: all 0.12s; }
+.an-setup__profile:hover { border-color: var(--bg-hover); }
+.an-setup__profile.on { border-color: var(--accent); background: var(--accent-dim); }
+.an-setup__profile-title { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+/* The consequence is never truncated: it is the sentence being agreed to. */
+.an-setup__profile-consequence { font-size: 12px; color: var(--text-muted); line-height: 1.55; margin-top: 5px; }
+.an-setup__badge { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--green); border: 1px solid var(--green); border-radius: 4px; padding: 1px 5px; }
+
+.an-setup__fields { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.an-setup__fields label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-muted); }
+.an-setup__fields input, .an-setup__input { background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 7px; padding: 8px 11px; color: var(--text); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; width: 100%; }
+.an-setup__fields input:focus, .an-setup__input:focus { outline: none; border-color: var(--accent); }
+
+.an-setup__note { font-size: 11.5px; color: var(--text-sub); line-height: 1.55; margin-top: 8px; }
+.an-setup__note code { color: var(--text-muted); }
+.an-setup__warn { font-size: 12px; color: #d29922; line-height: 1.6; background: rgba(210,153,34,0.08);
+  border: 1px solid rgba(210,153,34,0.25); border-radius: 7px; padding: 10px 13px; }
+.an-setup__warn code { color: var(--text); }
+.an-setup__error { font-size: 12px; color: #f85149; background: rgba(248,81,73,0.08);
+  border: 1px solid rgba(248,81,73,0.3); border-radius: 7px; padding: 10px 13px; margin-top: 16px; }
+
+.an-setup__summary { margin-top: 30px; padding: 14px 16px; border-radius: 9px;
+  background: var(--bg-surface); border: 1px solid var(--border-sub); font-size: 12.5px;
+  color: var(--text-muted); line-height: 1.6; }
+.an-setup__summary strong { color: var(--text); }
+
+.an-setup__go { margin-top: 16px; width: 100%; }
+
+/* ── Editing the policy ───────────────────────────────────────────────────────
+   Inputs sit in the same tables as the read-only view, at the same widths, so
+   pressing Edit does not rearrange the page under the person reading it. */
+
+.view-header-actions { display: flex; gap: 8px; align-items: center; }
+
+.an-edit__bar { display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; margin-bottom: 14px; }
+.an-edit__modes { display: flex; gap: 4px; }
+.an-edit__mode { background: none; border: 1px solid transparent; color: var(--text-muted);
+  font-family: inherit; font-size: 12px; padding: 5px 11px; border-radius: 6px; cursor: pointer; }
+.an-edit__mode:hover:not(:disabled) { color: var(--text); background: var(--bg-overlay); }
+.an-edit__mode.on { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.an-edit__mode:disabled { opacity: 0.35; cursor: not-allowed; }
+.an-edit__actions { display: flex; gap: 8px; align-items: center; }
+.an-edit__cancel { background: none; border: 1px solid var(--border); color: var(--text-muted);
+  font-family: inherit; font-size: 12px; padding: 6px 13px; border-radius: 7px; cursor: pointer; }
+.an-edit__cancel:hover { color: var(--text); border-color: var(--bg-hover); }
+.an-edit__save { padding: 6px 15px; font-size: 12px; width: auto; }
+
+.an-edit__table input, .an-edit__table select, .an-edit__wide {
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 9px; color: var(--text); font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; width: 100%; }
+.an-edit__table input:focus, .an-edit__table select:focus, .an-edit__wide:focus {
+  outline: none; border-color: var(--accent); }
+.an-edit__table select { font-family: inherit; }
+.an-edit__table td { vertical-align: middle; padding-top: 6px; padding-bottom: 6px; }
+.an-edit__fixed { color: var(--text-muted); white-space: nowrap; }
+.an-edit__wide { margin-top: 4px; }
+
+.an-edit__checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.an-edit__check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font-size: 11.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; }
+.an-edit__check.on { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.an-edit__check input { margin: 0; accent-color: var(--accent); }
+
+.an-edit__text { width: 100%; min-height: 460px; background: var(--bg-surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 13px 15px; color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6;
+  resize: vertical; }
+.an-edit__text:focus { outline: none; border-color: var(--accent); }
+
+.an-edit__note { font-size: 11.5px; color: var(--text-sub); line-height: 1.55; margin-top: 8px; }
+.an-edit__error { font-size: 12px; color: #f85149; background: rgba(248,81,73,0.08);
+  border: 1px solid rgba(248,81,73,0.3); border-radius: 7px; padding: 10px 13px;
+  margin-bottom: 14px; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.an-edit__foot { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border-sub);
+  font-size: 11.5px; color: var(--text-sub); line-height: 1.6; }
+.an-edit__foot code { color: var(--text-muted); }
+
+/* ── Working ──────────────────────────────────────────────────────────────────
+   What the kernel is doing, while it does it. The steps are ledger entries, so
+   this styles the audit trail rather than a decorative animation. */
+
+.an-working { padding: 4px 0 2px; }
+
+.an-working__head { display: flex; align-items: baseline; gap: 10px; }
+
+/* The sweep. A gradient moving across the glyphs rather than a pulsing opacity:
+   it reads as "in progress" without the text ever becoming hard to read, which
+   a fade to 30% does. */
+.an-working__label {
+  font-size: 13px; font-weight: 500;
+  background: linear-gradient(90deg,
+    var(--text-sub) 0%, var(--text-sub) 35%,
+    var(--text) 50%,
+    var(--text-sub) 65%, var(--text-sub) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  animation: an-sweep 2.1s linear infinite;
+}
+.an-working__label.is-held {
+  animation: none; background: none; -webkit-text-fill-color: var(--red); color: var(--red);
+}
+
+@keyframes an-sweep {
+  from { background-position: 120% 0; }
+  to   { background-position: -20% 0; }
+}
+
+/* Motion is information here, not decoration — but it is not the only carrier:
+   the phrase and the step list say the same thing standing still. */
+@media (prefers-reduced-motion: reduce) {
+  .an-working__label { animation: none; background: none;
+    -webkit-text-fill-color: var(--text-muted); color: var(--text-muted); }
+}
+
+.an-working__clock { font-size: 11px; color: var(--text-sub);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+.an-working__steps { margin-top: 10px; display: flex; flex-direction: column; gap: 5px;
+  padding-left: 2px; border-left: 1px solid var(--border-sub); margin-left: 3px; }
+.an-working__step { display: flex; align-items: center; gap: 9px; padding-left: 11px;
+  font-size: 11.5px; animation: an-step-in 0.22s ease-out; }
+
+/* Each step arrives once, so it slides in once. Without this they appear as a
+   jump and a person re-reads the whole list to find what changed. */
+@keyframes an-step-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .an-working__step { animation: none; } }
+
+.an-working__dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.an-working__what { color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.an-working__file { color: var(--text-sub); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: 340px; }
+.an-working__outcome { margin-left: auto; font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
