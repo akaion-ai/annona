@@ -135,6 +135,14 @@ class Substrate:
     jurisdiction: str = "world"
     endpoint: str = ""
     model: str = ""
+    api_key_env: str = ""
+    """Environment variable holding this substrate's credential.
+
+    Per substrate, because a policy that registers two frontier providers needs
+    two keys and a single global variable can only hold one. The *name* lives in
+    the policy and the *value* never does: a policy file is the document an
+    operator shows an auditor, and a secret in it is a secret in a git history.
+    """
     attestation: str = ""
     tools: bool = True
     vision: bool = False
@@ -165,6 +173,50 @@ class Rule:
 
 
 @dataclass(frozen=True, slots=True)
+class SealedSpec:
+    """Material no transformation may release.
+
+    This is the answer to a question redaction cannot answer. Replacing every
+    identifier in an M&A memorandum leaves::
+
+        Progetto Falcon — il nostro cliente [ORG_1] acquisisce il 70% di
+        [ORG_2] per [AMOUNT_1]; signing entro il [DATE_1].
+
+    Nothing personal remains and the secret is entirely intact, because the
+    secret was never an identifier: it is the *proposition*, and the party who
+    asked the question is known to whoever answers it. A firm that sends this to
+    a frontier API has told that provider it is advising on a deal of that size
+    on that timetable, and two facts plus a newspaper name the target.
+
+    So sealing is not a class — classes say *where* material may run, and are
+    lowered when identifiers are removed. Sealing is a property of the matter
+    that survives every transformation: sealed material is never briefed, never
+    redacted, never sent. It is the one control an operator can rely on for the
+    documents that would end a mandate.
+    """
+
+    paths: tuple[str, ...] = ()
+    patterns: tuple[re.Pattern[str], ...] = ()
+
+    @property
+    def active(self) -> bool:
+        return bool(self.paths or self.patterns)
+
+    def matches_path(self, literal: str, resolved: str) -> bool:
+        return any(glob_matches(literal, p) or glob_matches(resolved, p) for p in self.paths)
+
+    def matches_content(self, content: str) -> bool:
+        return any(p.search(content) for p in self.patterns)
+
+    def reason(self, content: str) -> str:
+        """Which rule sealed this, for the ledger and for the operator."""
+        for pattern in self.patterns:
+            if pattern.search(content):
+                return f"sealed by pattern /{pattern.pattern}/"
+        return "sealed"
+
+
+@dataclass(frozen=True, slots=True)
 class EgressPolicy:
     """What may cross when the class outranks every available substrate.
 
@@ -172,16 +224,53 @@ class EgressPolicy:
     it is a mechanism whose whole purpose is to let *something* out. The shipped
     default permits it for ``internal`` and never for ``restricted``, and
     widening that is a decision an operator has to write down.
+
+    Redaction has its own list, and it starts **empty**. The two mechanisms let
+    out very different amounts:
+
+    A brief is written by a local model told to abstract, and what leaves is
+    only what that model chose to say — a few hundred tokens an operator can
+    read. Redaction leaves the document *entire*, minus the identifiers: every
+    fact, every number, every sentence about what the matter is. For material
+    whose sensitivity was the identifiers, that is exactly right. For material
+    whose sensitivity is the subject, it is the whole secret with the names
+    filed off.
+
+    Sharing one list would have made the safer instrument imply the more
+    exposing one. So briefing is on for ``internal`` by default and redaction is
+    off until somebody writes down which classes may take that route.
+
+    Unlike ``allowed_for``, this list *may* name ``restricted``, and the reason
+    is worth stating because it looks like an inconsistency. Most restricted
+    material is restricted **because of its identifiers** — a letter carrying a
+    codice fiscale is the case redaction exists for, and refusing it outright
+    would delete the feature rather than secure it. No classifier distinguishes
+    "restricted because of a tax code" from "restricted because of what it is
+    about"; only a person can, and the place they say so is
+    :class:`SealedSpec`. So the policy offers both readings in one line:
+
+    ``allowed_for: [internal]``
+        the strict deployment. Restricted material is never redacted out, and a
+        letter about a client waits for the local model to come back.
+    ``allowed_for: [internal, restricted]``
+        the working deployment. Identifiers may buy passage — and the matter
+        that must never travel is named under ``sealed``, not left to a detector
+        that can only see tokens.
     """
 
     brief_produced_by: str = ""
     brief_max_tokens: int = 512
     brief_must_clear: bool = True
     allowed_for: tuple[SensitivityClass, ...] = (SensitivityClass.INTERNAL,)
+    redact_allowed_for: tuple[SensitivityClass, ...] = ()
     canaries: tuple[str, ...] = ()
+    sealed: SealedSpec = field(default_factory=SealedSpec)
 
     def permits_brief(self, klass: SensitivityClass) -> bool:
         return bool(self.brief_produced_by) and klass in self.allowed_for
+
+    def permits_redaction(self, klass: SensitivityClass) -> bool:
+        return klass in self.redact_allowed_for
 
 
 @dataclass(frozen=True, slots=True)

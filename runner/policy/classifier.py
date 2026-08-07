@@ -174,6 +174,7 @@ class WorkingSet:
     def __init__(self, initial: SensitivityClass = SensitivityClass.PUBLIC) -> None:
         self._klass = initial
         self._provenance: list[tuple[str, SensitivityClass]] = []
+        self._sealed = ""
 
     @property
     def klass(self) -> SensitivityClass:
@@ -191,6 +192,24 @@ class WorkingSet:
         if not raisers:
             return f"class {self._klass.label}"
         return f"class {self._klass.label} (working set touched {raisers[0]})"
+
+    @property
+    def sealed(self) -> str:
+        """Why this run may not be transformed for egress, or ``""``.
+
+        Kept here rather than on the backend for the same reason the class is:
+        it is a fact about the *run*. A backend is constructed per composition
+        and could be constructed twice; the working set is the one object whose
+        whole job is to remember what has been touched, and forgetting a seal
+        between turns would be the most expensive kind of amnesia.
+        """
+        return self._sealed
+
+    def seal(self, reason: str) -> None:
+        """Mark this run sealed. Like the class, this only ever goes one way."""
+        if reason and not self._sealed:
+            self._sealed = reason
+            self.observe(reason, SensitivityClass.RESTRICTED)
 
     def observe(self, source: str, klass: SensitivityClass) -> SensitivityClass:
         """Fold one observation in and return the new class."""

@@ -60,8 +60,13 @@ class AnthropicBackend:
             "system": request.system,
             "messages": encode_transcript(request.transcript),
             "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
         }
+        # `temperature` is deliberately absent. Current Anthropic models —
+        # Opus 5, Opus 4.8/4.7, Sonnet 5 — reject sampling parameters with a
+        # 400, so sending one made *every* request to a correctly configured
+        # frontier substrate fail. The request carries a temperature because
+        # other providers still take one; this adapter is the place that knows
+        # its provider does not.
 
         tools = encode_tools(request.tools)
         if tools:

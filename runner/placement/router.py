@@ -31,7 +31,7 @@ from collections.abc import Mapping
 from loguru import logger
 
 from runner.audit.ledger import Ledger
-from runner.kernel.blocks import text_block
+from runner.kernel.blocks import media_path, text_block
 from runner.kernel.errors import BackendUnavailableError, PlacementHeldError
 from runner.kernel.types import (
     Capabilities,
@@ -45,8 +45,8 @@ from runner.kernel.types import (
 )
 from runner.placement.engine import PlacementDecisionEngine
 from runner.placement.registry import SubstrateRegistry
-from runner.policy.classifier import PolicyClassifier, WorkingSet
-from runner.policy.models import Policy
+from runner.policy.classifier import PolicyClassifier, WorkingSet, paths_in_text
+from runner.policy.models import Policy, normalise_path
 from runner.policy.redaction import Redaction, Redactor, class_for_labels, restore
 
 __all__ = ["BRIEF_SYSTEM_PROMPT", "RoutingBackend"]
@@ -86,6 +86,7 @@ class RoutingBackend:
     def __init__(
         self,
         *,
+        prefer_quality: bool = False,
         policy: Policy,
         engine: PlacementDecisionEngine,
         registry: SubstrateRegistry,
@@ -105,6 +106,9 @@ class RoutingBackend:
         self._redactor = redactor
         self._last_placement: Placement | None = None
         self._last_redaction: Redaction | None = None
+        self._egress: list[dict[str, object]] = []
+        self._egress_noted = False
+        self._prefer_quality = prefer_quality
 
     # ── Port ──────────────────────────────────────────────────────────────────
 
@@ -137,6 +141,20 @@ class RoutingBackend:
         """The most recent decision, for callers that report on a run."""
         return self._last_placement
 
+    @property
+    def egress(self) -> tuple[dict[str, object], ...]:
+        """Every payload that left this machine, verbatim, in order.
+
+        The operator's own material, shown back to the operator on their own
+        screen. It is the only way to answer the question that decides whether
+        any of this is trustworthy — *what did you actually send?* — and the
+        answer has to be the bytes, not a count of them: a count cannot tell you
+        that "Progetto Falcon" survived a redaction, and the reader can.
+
+        Held steps are here too. A refusal is the more interesting record.
+        """
+        return tuple(self._egress)
+
     def complete(self, request: CompletionRequest) -> Completion:
         """Serve one turn, wherever the policy says it may be served.
 
@@ -146,7 +164,18 @@ class RoutingBackend:
                 reason. This is the error that must never be retried elsewhere.
         """
         klass = self._effective_class(request)
-        requirement = Requirement(tools=bool(request.tools))
+        sealed = self._sealed(request)
+        # A turn carrying an image can only be served by a substrate that can
+        # see one. Declared as a requirement rather than handled by the adapter
+        # so the outcome is a *placement* — "not chosen: cannot read images" in
+        # the ledger — instead of a model quietly being sent a request it
+        # answers from the text alone.
+        requirement = Requirement(
+            tools=bool(request.tools),
+            vision=_carries_media(request),
+            sealed=bool(sealed),
+            prefer_quality=self._prefer_quality,
+        )
 
         for attempt in range(1, MAX_FAILOVER_ATTEMPTS + 1):
             placement = self._engine.place(klass, requirement)
@@ -188,6 +217,37 @@ class RoutingBackend:
 
     # ── Internals ─────────────────────────────────────────────────────────────
 
+    def _sealed(self, request: CompletionRequest) -> str:
+        """Why this run is sealed, or ``""``.
+
+        Monotone like the working set, and for the identical reason: a run that
+        has once touched sealed matter stays sealed, because the transcript
+        carries it forward and a later turn that happens not to quote the
+        codename is still a turn about the same deal.
+        """
+        spec = self._policy.egress.sealed
+        if not spec.active or self._working_set.sealed:
+            return self._working_set.sealed
+
+        payload = self._render(request)
+        reason = ""
+        if spec.matches_content(payload):
+            reason = spec.reason(payload)
+        else:
+            for path in paths_in_text(payload):
+                literal, resolved = normalise_path(path)
+                if spec.matches_path(literal, resolved):
+                    reason = f"sealed by path {path}"
+                    break
+
+        if reason:
+            logger.warning(f"this run is sealed: {reason}")
+            # Sealed material is restricted by construction: the class says
+            # where it may run, the seal says nothing may lower it.
+            self._working_set.seal(reason)
+
+        return self._working_set.sealed
+
     def _effective_class(self, request: CompletionRequest) -> SensitivityClass:
         """Class of what is actually about to be sent.
 
@@ -217,11 +277,18 @@ class RoutingBackend:
 
     @staticmethod
     def _render(request: CompletionRequest) -> str:
-        """Flatten a request into the text that would cross the wire."""
+        """Flatten a request into the text that would cross the wire.
+
+        A media block renders as its path. That is not a cosmetic choice: the
+        path is what the classifier can reason about — ``~/Pazienti/**`` is a
+        rule somebody wrote — and rendering the block's repr instead would mean
+        attaching a restricted scan raised the class of nothing at all.
+        """
         parts = [request.system]
         for turn in request.transcript:
             for block in turn.blocks:
-                parts.append(str(getattr(block, "content", block)))
+                path = media_path(block)
+                parts.append(path or str(getattr(block, "content", block)))
         return "\n".join(p for p in parts if p)
 
     def _call(self, substrate_id: str, request: CompletionRequest) -> Completion:
@@ -229,6 +296,18 @@ class RoutingBackend:
         if backend is None:
             raise BackendUnavailableError(
                 f"substrate {substrate_id!r} is permitted by policy but no backend is wired"
+            )
+
+        substrate = self._registry.get(substrate_id)
+        if substrate is not None and substrate.distance > 0 and not self._egress_noted:
+            # Anything that is not on this machine. Recorded verbatim before the
+            # call, not after: if the provider hangs or the process dies, the
+            # operator still needs to know what had already been handed over.
+            self._note_egress(
+                kind="verbatim",
+                substrate=substrate_id,
+                klass=self._working_set.klass,
+                text=self._render(request),
             )
 
         completion: Completion = backend.complete(request)  # type: ignore[attr-defined]
@@ -342,7 +421,18 @@ class RoutingBackend:
             max_tokens=request.max_tokens,
             model=request.model,
         )
-        return self._call(onward.substrate, briefed_request)
+        self._note_egress(
+            kind="briefed",
+            substrate=onward.substrate,
+            klass=brief_class,
+            text=brief,
+            detail={"written_by": producer},
+        )
+        self._egress_noted = True
+        try:
+            return self._call(onward.substrate, briefed_request)
+        finally:
+            self._egress_noted = False
 
     def _complete_via_redaction(
         self,
@@ -403,6 +493,11 @@ class RoutingBackend:
         redacted_class = max(
             self._classifier.classify_text(redaction.text),
             class_for_labels({}, self._policy.redaction),
+            # The floor. Redaction removes identifiers; it does not turn a
+            # client's memorandum into public material, and without this the
+            # reclassification says exactly that — because the class came from
+            # the identifiers that were just removed.
+            self._policy.redaction.floor,
         )
         for canary in self._policy.egress.canaries:
             if canary and canary in redaction.text:
@@ -462,6 +557,17 @@ class RoutingBackend:
             payload=redaction.text,
             extra={"redacted": redaction.summary(), "redactor": self._redactor.name},
         )
+        self._note_egress(
+            kind="redacted",
+            substrate=onward.substrate,
+            klass=redacted_class,
+            text=redaction.text,
+            detail={
+                "redactor": self._redactor.name,
+                "labels": redaction.summary(),
+                "replaced": redaction.count,
+            },
+        )
 
         redacted_request = CompletionRequest(
             system=request.system,
@@ -471,7 +577,11 @@ class RoutingBackend:
             max_tokens=request.max_tokens,
             model=request.model,
         )
-        completion = self._call(onward.substrate, redacted_request)
+        self._egress_noted = True
+        try:
+            completion = self._call(onward.substrate, redacted_request)
+        finally:
+            self._egress_noted = False
 
         return self._reidentify(completion, redaction)
 
@@ -499,6 +609,35 @@ class RoutingBackend:
         )
 
     # ── Recording ─────────────────────────────────────────────────────────────
+
+    def _note_egress(
+        self,
+        *,
+        kind: str,
+        substrate: str,
+        klass: SensitivityClass,
+        text: str,
+        detail: Mapping[str, object] | None = None,
+    ) -> None:
+        """Keep what crossed, in memory, for this process only.
+
+        Never written to the ledger: the ledger holds digests and counts on
+        purpose, because a tamper-evident record of what was sent would be a
+        second copy of the material with a longer life than the run. This list
+        dies with the process, and exists so the window can show a person the
+        text a moment after it left.
+        """
+        sub = self._registry.get(substrate)
+        self._egress.append(
+            {
+                "kind": kind,
+                "substrate": substrate,
+                "jurisdiction": sub.jurisdiction if sub else "",
+                "class": klass.label,
+                "text": text,
+                **(dict(detail) if detail else {}),
+            }
+        )
 
     def _record(
         self,
@@ -543,3 +682,8 @@ class RoutingBackend:
                 "note": "placement is recomputed within the same rule; the rule is not widened",
             },
         )
+
+
+def _carries_media(request: CompletionRequest) -> bool:
+    """Whether this turn puts an image, a video or a document in front of a model."""
+    return any(media_path(block) for turn in request.transcript for block in turn.blocks)

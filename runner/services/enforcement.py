@@ -84,6 +84,20 @@ def build_backend(substrate: Substrate, *, secrets: Mapping[str, str] | None = N
     secrets = secrets or os.environ
     kind = substrate.kind.lower()
 
+    def credential(*fallbacks: str) -> tuple[str, str]:
+        """This substrate's key, and the variable name to name in an error.
+
+        The substrate's own ``api_key_env`` wins; the historical global names
+        remain as fallbacks so an existing single-provider deployment keeps
+        working. Returning the *name* alongside the value is what lets a failure
+        say `set OPENROUTER_KEY` rather than `no credentials`.
+        """
+        names = (substrate.api_key_env, *fallbacks) if substrate.api_key_env else fallbacks
+        for name in names:
+            if name and secrets.get(name):
+                return secrets[name], name
+        return "", (names[0] if names else "")
+
     if kind == "ollama":
         if not substrate.model:
             raise ConfigurationError(f"substrate {substrate.id!r} (ollama) declares no model")
@@ -98,10 +112,11 @@ def build_backend(substrate: Substrate, *, secrets: Mapping[str, str] | None = N
             raise ConfigurationError(f"substrate {substrate.id!r} ({kind}) declares no endpoint")
         if not substrate.model:
             raise ConfigurationError(f"substrate {substrate.id!r} ({kind}) declares no model")
+        key, _ = credential("ANNONA_SUBSTRATE_KEY", "OPENAI_API_KEY")
         return OpenAICompatibleBackend(
             model=substrate.model,
             endpoint=substrate.endpoint,
-            api_key=secrets.get("ANNONA_SUBSTRATE_KEY", "") or secrets.get("OPENAI_API_KEY", ""),
+            api_key=key,
             context_window=substrate.context_window or 32_768,
             # Locality is the operator's claim about their own network, not
             # something an HTTP client can determine. The policy says it.
@@ -110,10 +125,11 @@ def build_backend(substrate: Substrate, *, secrets: Mapping[str, str] | None = N
         )
 
     if kind == "anthropic":
-        key = secrets.get("ANTHROPIC_API_KEY", "")
+        key, name = credential("ANTHROPIC_API_KEY")
         if not key:
             raise ConfigurationError(
-                f"substrate {substrate.id!r} (anthropic) needs ANTHROPIC_API_KEY"
+                f"substrate {substrate.id!r} (anthropic) has no credential: set {name}, "
+                "or point the substrate at another variable with api_key_env"
             )
         # Imported here rather than at module scope: the SDK is an optional
         # extra, and a policy with no Anthropic substrate must not require it.
@@ -121,7 +137,10 @@ def build_backend(substrate: Substrate, *, secrets: Mapping[str, str] | None = N
 
         return AnthropicBackend(
             client=Anthropic(api_key=key),
-            model=substrate.model or "claude-sonnet-4-5",
+            # A default that is current rather than whatever was current when
+            # this line was written: a policy that omits `model` should get a
+            # model that exists.
+            model=substrate.model or "claude-opus-5",
         )
 
     if kind == "echo":
@@ -301,9 +320,16 @@ class Enforcement:
             context_window=max((s.context_window for s in self.policy.substrates), default=0),
         )
 
-    def backend(self) -> RoutingBackend:
-        """The backend that places every turn before it is served."""
+    def backend(self, *, prefer_quality: bool = False) -> RoutingBackend:
+        """The backend that places every turn before it is served.
+
+        Args:
+            prefer_quality: The operator asked for the best substrate this
+                policy already permits. Reordering only — see
+                :class:`~runner.kernel.types.Requirement`.
+        """
         return RoutingBackend(
+            prefer_quality=prefer_quality,
             policy=self.policy,
             engine=self.engine,
             registry=self.registry,

@@ -1,42 +1,78 @@
-"""
-Document Reader Tool
+"""The tool the model calls to read a file.
 
-Reads files of many formats and converts them to text:
-PDF, DOCX, XLSX/XLS, CSV, TXT, MD, JSON, YAML
+Thin on purpose. Everything about *how* a format is read lives in
+:mod:`runner.tools.extractors`; what is left here is the part that belongs to a
+tool — the schema the model sees, the size ceiling the operator set, and a
+result shape that has not changed since this tool only knew about PDFs.
+
+Two things it does not do, and must not start doing:
+
+**It does not decide whether a file may be read.** That is the gate's job
+(``runner.policy.gate``), which sees this call before it runs and refuses it if
+the path is outside the tool's allow-list. A reader that consulted permissions
+itself would be a second, quieter policy.
+
+**It does not put images in the transcript.** Anything visual comes back as a
+*reference* under ``media``. Whether a model ever sees those pixels is decided
+by placement, after classification — which is the whole point of the kernel and
+would be undone by a tool that inlined base64 into its own result.
 """
 
-import csv
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
+from runner.tools.extractors import ReadOptions, capabilities, extract
+from runner.tools.extractors.av import AUDIO_SUFFIXES, VIDEO_SUFFIXES
+from runner.tools.extractors.registry import CODE_SUFFIXES, IMAGE_SUFFIXES, TEXT_SUFFIXES
+
 from .base import Tool
 
-# Mappa estensioni → parser
+# Kept as a module constant with its original key names because `explorer` and
+# the existing tests read it. New families were appended rather than folded into
+# the old ones: `get_file_format("scan.dcm")` returning "medical" is worth more
+# to a caller than it returning "unknown".
 SUPPORTED_FORMATS = {
-    "text": [".txt", ".md", ".rst", ".log", ".ini", ".cfg", ".toml", ".env"],
-    "code": [".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".sh", ".yaml", ".yml", ".json"],
+    "text": list(TEXT_SUFFIXES),
+    "code": list(CODE_SUFFIXES),
     "pdf": [".pdf"],
-    "word": [".docx", ".doc"],
-    "excel": [".xlsx", ".xls", ".ods"],
+    "word": [".docx", ".doc", ".odt"],
+    "excel": [".xlsx", ".xlsm", ".xls", ".ods"],
     "csv": [".csv"],
     "rtf": [".rtf"],
+    "presentation": [".pptx", ".odp"],
+    "ebook": [".epub"],
+    "structured": [".xml", ".ics"],
+    "signed": [".p7m", ".p7s"],
+    "mail": [".eml", ".msg"],
+    "archive": [".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz"],
+    "image": list(IMAGE_SUFFIXES),
+    "audio": list(AUDIO_SUFFIXES),
+    "video": list(VIDEO_SUFFIXES),
+    "medical": [".dcm", ".dicom"],
 }
 
 MAX_FILE_SIZE_MB = 50
 
 
 class DocumentReaderTool(Tool):
-    """Tool per leggere documenti di vari formati"""
+    """Reads a file of almost any format and returns it as text."""
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(
             name="document_reader",
             description=(
-                "Read and extract text content from files of various formats: "
-                "PDF, Word (DOCX), Excel (XLSX), CSV, plain text, code files, JSON, YAML. "
-                "Returns the full text content ready to be analyzed."
+                "Read a file and return its content as text. Handles documents (PDF, Word, "
+                "Excel, PowerPoint, OpenDocument, EPUB, RTF, CSV, text and code), structured "
+                "data (XML, including Italian FatturaPA e-invoices, and iCalendar), signed "
+                "envelopes (.p7m/CAdES — the envelope is opened and the document inside is "
+                "read), saved email (.eml/.msg, attachments included), archives (zip/tar, "
+                "members read individually), images (metadata, EXIF and OCR when available), "
+                "audio and video (duration, streams, and a locally produced transcript when a "
+                "speech model is installed), and DICOM medical imaging (header). "
+                "Reading is best-effort and always honest: whatever could not be read comes "
+                "back under 'warnings'."
             ),
             parameters={
                 "type": "object",
@@ -51,7 +87,7 @@ class DocumentReaderTool(Tool):
                     },
                     "sheet_name": {
                         "type": "string",
-                        "description": "For Excel files: sheet name to read (default: first sheet)",
+                        "description": "For spreadsheets: the sheet to read (default: every sheet)",
                     },
                 },
                 "required": ["path"],
@@ -78,148 +114,42 @@ class DocumentReaderTool(Tool):
                 "error": f"File too large: {size_mb:.1f} MB (limit {self.max_size_mb} MB)",
             }
 
-        suffix = target.suffix.lower()
-        logger.info(f"Reading document: {target} ({suffix}, {size_mb:.2f} MB)")
+        logger.info(f"Reading document: {target} ({target.suffix.lower()}, {size_mb:.2f} MB)")
 
         try:
-            if suffix in SUPPORTED_FORMATS["pdf"]:
-                text, meta = self._read_pdf(target)
-            elif suffix in SUPPORTED_FORMATS["word"]:
-                text, meta = self._read_word(target)
-            elif suffix in SUPPORTED_FORMATS["excel"]:
-                text, meta = self._read_excel(target, sheet_name)
-            elif suffix in SUPPORTED_FORMATS["csv"]:
-                text, meta = self._read_csv(target)
-            elif suffix in SUPPORTED_FORMATS["text"] + SUPPORTED_FORMATS["code"]:
-                text, meta = self._read_text(target)
-            else:
-                # Try as plain text anyway
-                text, meta = self._read_text(target)
-                meta["format"] = "unknown (treated as text)"
-
-            if max_chars and len(text) > max_chars:
-                text = text[:max_chars] + f"\n\n[... truncated at {max_chars} chars ...]"
-
-            return {
-                "success": True,
-                "path": str(target),
-                "format": meta.get("format", suffix),
-                "size_mb": round(size_mb, 3),
-                "char_count": len(text),
-                "metadata": meta,
-                "content": text,
-            }
-
-        except Exception as e:
+            extraction = extract(
+                target,
+                ReadOptions(
+                    max_chars=max_chars,
+                    sheet_name=sheet_name,
+                    ocr=kwargs.get("ocr", "auto"),
+                    transcribe=kwargs.get("transcribe", "auto"),
+                ),
+            ).truncated(max_chars)
+        except Exception as e:  # noqa: BLE001 — surfaced to the model, not swallowed
             logger.error(f"Error reading {target}: {e}")
             return {"success": False, "error": str(e), "path": str(target)}
 
-    # ── Parsers ──────────────────────────────────────────────────────────────
-
-    def _read_pdf(self, path: Path):
-        try:
-            import pdfplumber
-
-            pages_text = []
-            metadata = {}
-            with pdfplumber.open(str(path)) as pdf:
-                metadata = {
-                    "format": "pdf",
-                    "pages": len(pdf.pages),
-                    "info": dict(pdf.metadata) if pdf.metadata else {},
-                }
-                for i, page in enumerate(pdf.pages, 1):
-                    t = page.extract_text() or ""
-                    if t.strip():
-                        pages_text.append(f"--- Page {i} ---\n{t}")
-            return "\n\n".join(pages_text), metadata
-        except ImportError:
-            # Fallback to pypdf
-            try:
-                from pypdf import PdfReader
-
-                reader = PdfReader(str(path))
-                pages_text = []
-                for i, page in enumerate(reader.pages, 1):
-                    t = page.extract_text() or ""
-                    if t.strip():
-                        pages_text.append(f"--- Page {i} ---\n{t}")
-                return "\n\n".join(pages_text), {"format": "pdf", "pages": len(reader.pages)}
-            except ImportError:
-                raise ImportError("Install pdfplumber or pypdf: pip install pdfplumber")
-
-    def _read_word(self, path: Path):
-        try:
-            from docx import Document
-
-            doc = Document(str(path))
-            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            # Also read tables
-            tables_text = []
-            for table in doc.tables:
-                rows = []
-                for row in table.rows:
-                    cells = [cell.text.strip() for cell in row.cells]
-                    rows.append(" | ".join(cells))
-                tables_text.append("\n".join(rows))
-            text = "\n".join(paragraphs)
-            if tables_text:
-                text += "\n\n=== Tables ===\n" + "\n\n---\n".join(tables_text)
-            return text, {
-                "format": "docx",
-                "paragraphs": len(paragraphs),
-                "tables": len(doc.tables),
-            }
-        except ImportError:
-            raise ImportError("Install python-docx: pip install python-docx")
-
-    def _read_excel(self, path: Path, sheet_name: Optional[str] = None):
-        try:
-            import openpyxl
-
-            wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
-            sheets = wb.sheetnames
-
-            if sheet_name and sheet_name in sheets:
-                target_sheets = [sheet_name]
-            else:
-                target_sheets = sheets
-
-            all_text = []
-            for sname in target_sheets:
-                ws = wb[sname]
-                rows_text = []
-                for row in ws.iter_rows(values_only=True):
-                    cells = [str(c) if c is not None else "" for c in row]
-                    if any(c.strip() for c in cells):
-                        rows_text.append(" | ".join(cells))
-                if rows_text:
-                    all_text.append(f"=== Sheet: {sname} ===\n" + "\n".join(rows_text))
-
-            return "\n\n".join(all_text), {
-                "format": "xlsx",
-                "sheets": sheets,
-                "sheets_read": target_sheets,
-            }
-        except ImportError:
-            raise ImportError("Install openpyxl: pip install openpyxl")
-
-    def _read_csv(self, path: Path):
-        rows = []
-        with open(path, newline="", encoding="utf-8", errors="replace") as f:
-            reader = csv.reader(f)
-            for row in reader:
-                rows.append(" | ".join(row))
-        return "\n".join(rows), {"format": "csv", "rows": len(rows)}
-
-    def _read_text(self, path: Path):
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
-        return text, {"format": path.suffix.lstrip(".") or "txt"}
+        return {
+            "success": True,
+            "path": str(target),
+            "format": extraction.format,
+            "size_mb": round(size_mb, 3),
+            "char_count": len(extraction.text),
+            "metadata": dict(extraction.metadata),
+            "content": extraction.text,
+            # Present so the model knows the file has a visual side it did not
+            # get to see. It carries paths, never bytes.
+            "media": [ref.as_dict() for ref in extraction.media],
+            # A degraded read that reports nothing is the failure mode this tool
+            # is most likely to have: "the invoice is empty" when the truth is
+            # "nobody installed the thing that opens signed envelopes".
+            "warnings": list(extraction.warnings),
+        }
 
 
 def get_file_format(path: str) -> str:
-    """Utility: ritorna il formato del file"""
+    """The family a path belongs to, in this module's vocabulary."""
     suffix = Path(path).suffix.lower()
     for fmt, exts in SUPPORTED_FORMATS.items():
         if suffix in exts:
@@ -228,7 +158,29 @@ def get_file_format(path: str) -> str:
 
 
 def is_readable(path: str) -> bool:
-    """Utility: controlla se il file è leggibile"""
+    """Whether a registered reader claims this extension.
+
+    ``False`` does not mean the file is unreadable — :func:`extract` falls back
+    to reading anything as text — it means nothing here knows what it is.
+    """
     suffix = Path(path).suffix.lower()
-    all_exts = [ext for exts in SUPPORTED_FORMATS.values() for ext in exts]
-    return suffix in all_exts
+    return any(suffix in exts for exts in SUPPORTED_FORMATS.values())
+
+
+def reader_capabilities() -> Dict[str, Any]:
+    """What this installation can actually read right now.
+
+    Re-exported from the extractor registry so callers outside the tool layer —
+    the HTTP surface, the CLI — have one import for "what can I attach".
+    """
+    return capabilities()
+
+
+__all__: List[str] = [
+    "MAX_FILE_SIZE_MB",
+    "SUPPORTED_FORMATS",
+    "DocumentReaderTool",
+    "get_file_format",
+    "is_readable",
+    "reader_capabilities",
+]

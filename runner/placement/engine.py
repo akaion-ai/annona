@@ -88,18 +88,24 @@ class PlacementDecisionEngine:
 
         if eligible:
             order = {sid: i for i, sid in enumerate(rule.allow)}
-            chosen = sorted(eligible, key=_rank_key(rule.prefer, order))[0]
+            # A caller may ask for the best permitted substrate rather than the
+            # rule's usual preference. It reorders; it never widens.
+            prefer = "quality" if requirement.prefer_quality else rule.prefer
+            chosen = sorted(eligible, key=_rank_key(prefer, order))[0]
             return Placement(
                 outcome="placed",
                 klass=klass,
                 substrate=chosen.id,
                 rule_id=rule.id,
-                reason=f"{rule.id} allows {chosen.id} for {klass.label}; prefer={rule.prefer}",
+                reason=(
+                    f"{rule.id} allows {chosen.id} for {klass.label}; prefer={prefer}"
+                    + (" (asked for)" if requirement.prefer_quality else "")
+                ),
                 candidates=tuple(s.id for s in eligible),
                 rejected=rejected,
             )
 
-        return self._unavailable(klass, rule, rejected)
+        return self._unavailable(klass, rule, rejected, requirement)
 
     def explain(self, klass: SensitivityClass, requirement: Requirement | None = None) -> str:
         """The decision as an operator reads it — the body of ``annona why``."""
@@ -200,8 +206,26 @@ class PlacementDecisionEngine:
         klass: SensitivityClass,
         rule: Rule,
         rejected: tuple[tuple[str, str], ...],
+        requirement: Requirement,
     ) -> Placement:
         """Apply ``on_unavailable`` — the three ways to not run something."""
+        if requirement.sealed and rule.on_unavailable in ("brief", "redact"):
+            # Sealed matter has no lowered form that may leave. A brief of an
+            # M&A memorandum is still the deal; the same memorandum with the
+            # names replaced is still the deal. Both are refused here rather
+            # than being caught later by a classifier that can only see tokens.
+            return Placement(
+                outcome="held",
+                klass=klass,
+                rule_id=rule.id,
+                reason=(
+                    f"no permitted substrate is available and this material is sealed: "
+                    f"{rule.on_unavailable} is an egress mechanism, and sealed matter has "
+                    "no form that leaves"
+                ),
+                rejected=rejected,
+            )
+
         if rule.on_unavailable == "queue":
             return Placement(
                 outcome="queued",
@@ -219,6 +243,23 @@ class PlacementDecisionEngine:
                     klass=klass,
                     rule_id=rule.id,
                     reason="the rule asks for redaction and no redactor is configured",
+                    rejected=rejected,
+                )
+
+            if not self._policy.egress.permits_redaction(klass):
+                # The same gate the brief has always had, for the same reason.
+                # Without it a policy could refuse to let a local model *summarise*
+                # a restricted file and then permit the whole file to be sent with
+                # the names swapped out — which is more material, not less.
+                return Placement(
+                    outcome="held",
+                    klass=klass,
+                    rule_id=rule.id,
+                    reason=(
+                        f"no permitted substrate is available and redaction is not "
+                        f"permitted for class {klass.label}; removing identifiers does "
+                        "not change what the text is about"
+                    ),
                     rejected=rejected,
                 )
             return Placement(

@@ -137,7 +137,35 @@ def test_it_posts_the_text_to_the_analyze_contract():
     RizzoPiiRedactor(client=http).analyse(REAL)
 
     assert http.url == "http://127.0.0.1:5005/analyze"
-    assert http.sent == {"text": REAL}
+    # include_mapping is sent explicitly rather than relied on as a server
+    # default: whether an answer can be re-identified afterwards is the caller's
+    # decision, and the server can be started either way.
+    assert http.sent == {"text": REAL, "include_mapping": True}
+
+
+def test_excluded_tags_are_sent_per_request_when_a_deployment_asks():
+    http = FakeHTTP(ANALYZE_OK)
+    RizzoPiiRedactor(client=http, exclude_tags=["CITY", "DATE"]).analyse(REAL)
+
+    assert http.sent["exclude_tags"] == ["CITY", "DATE"]
+
+
+def test_a_server_without_a_mapping_is_reported_rather_than_trusted():
+    """The reply would come back full of placeholders nobody can resolve."""
+    body = {**ANALYZE_OK, "mapping": {}, "mapping_enabled": False}
+
+    with pytest.raises(BackendUnavailableError, match="mapping disabled"):
+        RizzoPiiRedactor(client=FakeHTTP(body)).analyse(REAL)
+
+
+def test_definitive_anonymisation_is_available_on_purpose():
+    """``keep_mapping=False`` asks the server not to build a dictionary at all."""
+    http = FakeHTTP({**ANALYZE_OK, "mapping": {}, "mapping_enabled": False})
+    redaction = RizzoPiiRedactor(client=http, keep_mapping=False).analyse(REAL)
+
+    assert http.sent["include_mapping"] is False
+    assert redaction.mapping == {}
+    assert redaction.text == REDACTED
 
 
 def test_it_returns_the_redacted_text_the_mapping_and_the_labels():
@@ -201,7 +229,12 @@ BASE = {
             "allow": ["local-gpu"],
             "on_unavailable": "redact",
         },
-        {"id": "R-internal", "match": {"class": "internal"}, "allow": ["local-gpu"]},
+        {
+            "id": "R-internal",
+            "match": {"class": "internal"},
+            "allow": ["local-gpu"],
+            "on_unavailable": "redact",
+        },
         {
             "id": "R-public",
             "match": {"class": "public"},
@@ -214,6 +247,8 @@ BASE = {
         "endpoint": "http://127.0.0.1:5005",
         "labels": {"CF": "restricted", "FULLNAME": "internal"},
     },
+    # Redaction is off until a policy names the classes that may take it.
+    "egress": {"redact": {"allowed_for": ["internal"]}},
 }
 
 
@@ -271,8 +306,8 @@ class Wiretap:
         return Completion(text_parts=(self._reply,), stop_reason="end_turn")
 
 
-def build(tmp_path, *, redactor, frontier=None, local_down=True, klass=RESTRICTED):
-    """A perimeter holding restricted material with the local GPU unreachable.
+def build(tmp_path, *, redactor, frontier=None, local_down=True, klass=INTERNAL):
+    """A perimeter holding internal material with the local GPU unreachable.
 
     The situation redaction exists for: something sensitive to answer, and the
     only substrate allowed to see it is down.

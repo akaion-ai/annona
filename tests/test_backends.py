@@ -178,9 +178,12 @@ class TestAnthropicBackend:
         kwargs = client.messages.create.call_args[1]
         assert kwargs["model"] == "claude-x"
         assert kwargs["system"] == "SYSTEM"
-        assert kwargs["temperature"] == 0.25
         assert kwargs["max_tokens"] == 999
         assert [t["name"] for t in kwargs["tools"]] == ["filesystem"]
+        # Sampling parameters are not sent: current Anthropic models reject
+        # them with a 400, so a request carrying one never reached the model.
+        assert "temperature" not in kwargs
+        assert "top_p" not in kwargs
 
     def test_tools_are_omitted_when_there_are_none(self):
         """Some models reject an empty tools array; the runner has never sent one."""

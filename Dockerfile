@@ -50,9 +50,19 @@ LABEL org.opencontainers.image.title="Annona" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.vendor="Akaion AI Lab"
 
-# curl is the healthcheck and nothing else; no shell tooling, no build chain.
+# curl is the healthcheck. ffmpeg is the only other binary, and it is here
+# because an appliance is exactly the box somebody drops a voice memo or a
+# recorded call on: without it the audio and video readers report "ffmpeg is not
+# installed" on a machine nobody can apt-get into. It decodes untrusted media,
+# which is a real surface — mitigated the same way the rest of this image is: an
+# unprivileged user, a read-only root filesystem, every capability dropped, and
+# no route out of the compose network.
+#
+# Not installed: tesseract (OCR) and the speech models. Both need language data
+# or weights measured in hundreds of megabytes, and `annona formats` reports
+# them as missing with the exact install line rather than pretending.
 RUN apt-get update \
- && apt-get install --no-install-recommends -y curl \
+ && apt-get install --no-install-recommends -y curl ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin annona

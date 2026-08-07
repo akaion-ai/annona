@@ -1,0 +1,79 @@
+# Annona as a system service — for a box without Docker.
+#
+#   sudo cp deploy/annona.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now annona
+#   systemctl status annona ; journalctl -u annona -f
+#
+# Assumes a dedicated unprivileged user and a virtualenv:
+#
+#   sudo useradd --system --create-home --home-dir /var/lib/annona annona
+#   sudo -u annona python3 -m venv /var/lib/annona/venv
+#   sudo -u annona /var/lib/annona/venv/bin/pip install annona
+#
+# The hardening below is not decoration. This process reads a firm's client
+# files and decides what may leave the machine; the blast radius of a bug in it
+# should be the smallest the init system can express.
+
+[Unit]
+Description=Annona — the sovereign execution kernel
+Documentation=https://akaion-ai.github.io/annona/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=annona
+Group=annona
+WorkingDirectory=/var/lib/annona
+
+Environment=ANNONA_HOME=/var/lib/annona/.annona
+Environment=AKAION_HOME=/var/lib/annona/.annona
+Environment=AKAION_BRAIN_DIR=/var/lib/annona/vault
+Environment=AKAION_LOG_LEVEL=INFO
+# Loopback by default. Reaching this from another machine is a decision with
+# consequences — there is no per-user identity yet, so anything that can reach
+# the port has the operator's access. Put it behind a tunnel or a reverse proxy
+# that authenticates, and read docs/design/shared-context.md first.
+Environment=ANNONA_BIND=127.0.0.1
+
+ExecStart=/var/lib/annona/venv/bin/annona run --port 7070
+
+# Stay up. A kernel that dies at 03:00 and does not come back is a kernel that
+# quietly stops enforcing anything.
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logs to the journal: journalctl -u annona -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=annona
+
+# ── Hardening ────────────────────────────────────────────────────────────────
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+
+# The only writable paths. Add the directories the policy's tool allow-list
+# names, read-only, with ReadOnlyPaths= — the policy decides what may be read,
+# and this makes the kernel unable to write there even if the policy is wrong.
+ReadWritePaths=/var/lib/annona
+# ReadOnlyPaths=/srv/pratiche
+
+[Install]
+WantedBy=multi-user.target

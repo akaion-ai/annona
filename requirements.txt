@@ -42,7 +42,7 @@ websockets==16.0
 
 # Remote inference providers (optional at runtime; pinned here for bundles)
 openai>=1.30.1
-anthropic==0.25.7
+anthropic>=0.40
 google-generativeai>=0.5.4
 
 # Local API server (brain + sync UI)
@@ -54,6 +54,16 @@ pdfplumber==0.11.9
 pypdf>=4.0.0
 python-docx>=1.1.0
 openpyxl>=3.1.0
+
+# Attachments: the formats a bundled build should be able to read out of the
+# box. The heavy extras — speech (faster-whisper, torch) and medical imaging
+# (pydicom) — stay out of the bundle and are installed deliberately:
+#   pip install 'annona[media]'  /  pip install 'annona[medical]'
+python-pptx>=0.6.23
+asn1crypto>=1.5.1
+extract-msg>=0.48
+pillow>=10.3.0
+pillow-heif>=0.16
 
 # File & system
 watchdog==6.0.0

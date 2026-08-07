@@ -33,6 +33,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from runner.capability.backends.media import encode_media
 from runner.kernel.blocks import ToolResultBlock
 from runner.kernel.errors import BackendUnavailableError
 from runner.kernel.types import (
@@ -167,11 +168,16 @@ def _encode_transcript(system: str, transcript: Transcript) -> list[dict[str, An
         text_parts: list[str] = []
         tool_calls: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
+        images: list[str] = []
 
         for block in turn.blocks:
             kind = getattr(block, "type", "")
 
-            if kind == "text":
+            if kind == "media":
+                encoded = _encode_media(block, text_parts)
+                if encoded:
+                    images.append(encoded)
+            elif kind == "text":
                 text_parts.append(block.content)
             elif kind == "function":
                 tool_calls.append(
@@ -190,15 +196,48 @@ def _encode_transcript(system: str, transcript: Transcript) -> list[dict[str, An
                     }
                 )
 
-        if text_parts or tool_calls:
+        if text_parts or tool_calls or images:
             message: dict[str, Any] = {"role": turn.role, "content": " ".join(text_parts)}
             if tool_calls:
                 message["tool_calls"] = tool_calls
+            if images:
+                # Ollama's own shape: raw base64 on the message, no MIME type and
+                # no content blocks. Only a multimodal model will do anything
+                # with them, which is what `vision: true` in the policy asserts
+                # about the substrate.
+                message["images"] = images
             messages.append(message)
 
         messages.extend(results)
 
     return messages
+
+
+def _encode_media(block: Any, text_parts: list[str]) -> str | None:
+    """Attach an image, or say in words what could not be attached.
+
+    Ollama takes images and nothing else. A PDF or a video reaching this point
+    means placement chose a substrate for a turn carrying material it cannot
+    take, and the honest recovery is to tell the model the file exists and where
+    it is — it has a reader tool — rather than to drop it silently.
+    """
+    media = getattr(block, "media", None)
+    path = str(getattr(media, "source", "")) if media is not None else ""
+    if not path:
+        return None
+
+    if getattr(media, "media_type", "") != "image":
+        text_parts.append(
+            f"[attached {getattr(media, 'media_type', 'file')}: {path} — "
+            "this runtime takes images only; read it with the document_reader tool]"
+        )
+        return None
+
+    encoded = encode_media(path)
+    if encoded is None:
+        text_parts.append(f"[attached image {path} could not be sent; read it with a tool]")
+        return None
+    return encoded[0]
 
 
 def _describe_result(block: Any) -> str:

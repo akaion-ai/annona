@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
 from datapizza.tools import Tool
@@ -26,6 +27,8 @@ from datapizza.type import (
     Block,
     FunctionCallBlock,
     FunctionCallResultBlock,
+    Media,
+    MediaBlock,
     TextBlock,
 )
 
@@ -37,6 +40,8 @@ __all__ = [
     "encode_result_content",
     "function_call_block",
     "function_result_block",
+    "media_block",
+    "media_path",
     "text_block",
     "tool_spec_from_schema",
     "turn",
@@ -93,6 +98,43 @@ def as_datapizza_tool(spec: ToolSpec) -> Tool:
 def text_block(content: str) -> TextBlock:
     """A plain text block."""
     return TextBlock(content=content)
+
+
+def media_block(path: str | Path, media_type: str = "image") -> MediaBlock:
+    """A block carrying a *path* to something visual, never its bytes.
+
+    The distinction is the whole design. Base64 in the transcript would mean the
+    payload the router classifies, hashes into the ledger and may have to hold
+    is tens of megabytes of pixels — and, worse, that the material has already
+    been assembled into an outbound request before anything decided it could
+    cross. A path stays cheap, classifies correctly (it *is* a path, and the
+    policy has an opinion about paths), and is read by the L1 adapter only after
+    placement has chosen a substrate allowed to see it.
+    """
+    resolved = Path(path).expanduser()
+    return MediaBlock(
+        media=Media(
+            # Narrowed by the caller: `Attachment.media_type` is the literal
+            # union datapizza expects, and nothing else constructs these.
+            media_type=media_type,
+            source_type="path",
+            source=str(resolved),
+            extension=resolved.suffix.lstrip(".").lower() or None,
+        )
+    )
+
+
+def media_path(block: Block) -> str:
+    """The path a media block points at, or ``""`` for any other block.
+
+    Duck-typed rather than isinstance-checked so that every layer which needs to
+    recognise media — the router when it classifies, the adapters when they
+    encode — can do so without agreeing on a class.
+    """
+    media = getattr(block, "media", None)
+    if media is None or getattr(media, "source_type", "") != "path":
+        return ""
+    return str(getattr(media, "source", ""))
 
 
 def function_call_block(call: ToolCall, spec: ToolSpec | None = None) -> FunctionCallBlock:

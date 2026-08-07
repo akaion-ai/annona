@@ -32,6 +32,7 @@ Supported providers:
 """
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -48,6 +49,7 @@ from runner.capability.backends.echo import script_from_config
 from runner.capability.tooling import PermissionGate, RegistryToolExecutor
 from runner.kernel.errors import ConfigurationError
 from runner.kernel.ports import InferenceBackend
+from runner.kernel.types import Attachment, ToolCall
 
 from .cloud_client import AIBackendClient
 
@@ -455,7 +457,15 @@ Return the result in a structured format.""".format(
         return None
 
     def reason_and_execute(
-        self, prompt: str, context: Dict[str, Any], tools, permissions, max_iterations: int = 10
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+        tools,
+        permissions,
+        max_iterations: int = 10,
+        attachments: Sequence[Attachment] = (),
+        prefetch: Sequence[ToolCall] = (),
+        prefer_quality: bool = False,
     ) -> Any:
         """Run an agentic task: reason, call tools, repeat until done.
 
@@ -482,7 +492,16 @@ Return the result in a structured format.""".format(
         """
         enforcement = self._build_enforcement()
         if enforcement is not None:
-            return self._reason_enforced(enforcement, prompt, context, tools, max_iterations)
+            return self._reason_enforced(
+                enforcement,
+                prompt,
+                context,
+                tools,
+                max_iterations,
+                attachments,
+                prefetch,
+                prefer_quality,
+            )
 
         backend = self.build_backend()
 
@@ -497,7 +516,7 @@ Return the result in a structured format.""".format(
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
-        return loop.run(prompt, context, max_iterations).to_dict()
+        return loop.run(prompt, context, max_iterations, attachments, prefetch).to_dict()
 
     # ── The enforced path ─────────────────────────────────────────────────────
 
@@ -535,11 +554,14 @@ Return the result in a structured format.""".format(
         context: Dict[str, Any],
         tools,
         max_iterations: int,
+        attachments: Sequence[Attachment] = (),
+        prefetch: Sequence[ToolCall] = (),
+        prefer_quality: bool = False,
     ) -> Any:
         """Run with placement, default-deny clearance and a ledger."""
         # One routing backend, not one per call site: it carries the placement
         # of the last turn, and a fresh instance would have forgotten it.
-        routing = enforcement.backend()
+        routing = enforcement.backend(prefer_quality=prefer_quality)
 
         loop = AgentLoop(
             routing,
@@ -549,7 +571,7 @@ Return the result in a structured format.""".format(
             max_tokens=self.max_tokens,
         )
 
-        result = loop.run(prompt, context, max_iterations).to_dict()
+        result = loop.run(prompt, context, max_iterations, attachments, prefetch).to_dict()
 
         placement = routing.last_placement
         result["placement"] = {
@@ -559,6 +581,10 @@ Return the result in a structured format.""".format(
             "reason": placement.reason if placement else "",
         }
         result["ledger"] = {"path": str(enforcement.ledger.path), "head": enforcement.ledger.head}
+        # What actually left this machine, verbatim. The window shows it; it is
+        # never written to disk. See `RoutingBackend.egress`.
+        result["egress"] = [dict(item) for item in routing.egress]
+        result["sealed"] = enforcement.working_set.sealed
         return result
 
     def _agentic_loop_generic(self, prompt: str, context: Dict[str, Any], tools) -> Any:

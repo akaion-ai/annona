@@ -33,11 +33,17 @@ from typing import Any
 from loguru import logger
 
 from runner.agent.prompt import build_system_prompt
-from runner.kernel.blocks import function_call_block, function_result_block, text_block
+from runner.kernel.blocks import (
+    function_call_block,
+    function_result_block,
+    media_block,
+    text_block,
+)
 from runner.kernel.errors import BackendUnavailableError
 from runner.kernel.ports import InferenceBackend, PolicyGate, ToolExecutor
 from runner.kernel.types import (
     AgentResult,
+    Attachment,
     Completion,
     CompletionRequest,
     ToolCall,
@@ -98,6 +104,8 @@ class AgentLoop:
         prompt: str,
         context: Mapping[str, Any] | None = None,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
+        attachments: Sequence[Attachment] = (),
+        prefetch: Sequence[ToolCall] = (),
     ) -> AgentResult:
         """Run a task to completion, or to the iteration ceiling.
 
@@ -106,6 +114,18 @@ class AgentLoop:
             context: Run context injected into the system prompt.
             max_iterations: Maximum inference turns. A run that reaches this
                 ceiling returns what it has; it does not raise.
+            attachments: Files put in front of the run by the operator, carried
+                as references in the first turn. They are part of the payload
+                from the first placement onward, which is the point: attaching a
+                client's scan must decide where the *first* turn runs, not be
+                discovered halfway through by a tool call.
+            prefetch: Tool calls to run *before* the first inference, through the
+                same gate and into the same ledger as any other call. This is how
+                an attachment becomes content the model can rely on: asking a 7B
+                model to remember to call a reader works most of the time, and a
+                feature that works most of the time is one people stop using. It
+                also means the class of what was read is known before the first
+                placement rather than after it.
 
         Returns:
             The final text, how many turns it took, and every tool call made.
@@ -120,10 +140,26 @@ class AgentLoop:
         specs = self._executor.specs()
         specs_by_name = {spec.name: spec for spec in specs}
 
-        transcript: list[Turn] = [Turn(role="user", blocks=(text_block(prompt),))]
+        opening: list[Any] = [text_block(prompt)]
+        opening += [media_block(a.path, a.media_type) for a in attachments]
+        transcript: list[Turn] = [Turn(role="user", blocks=tuple(opening))]
         invocations: list[ToolInvocation] = []
         response = ""
         iterations = 0
+
+        if prefetch:
+            # Rendered as a tool round the model did not ask for, because that is
+            # what it is: the calls, then their results, in the shape every
+            # provider already understands. A refusal lands here too — a denied
+            # read is content the model must see, not a gap it will fill in.
+            results = self._execute(prefetch, invocations)
+            transcript.extend(
+                self._continuation(
+                    Completion(tool_calls=tuple(prefetch), stop_reason="tool_use"),
+                    results,
+                    specs_by_name,
+                )
+            )
 
         while iterations < max_iterations:
             iterations += 1
@@ -232,6 +268,8 @@ def run_agent(
     temperature: float = 0.7,
     max_tokens: int = 4096,
     model: str | None = None,
+    attachments: Sequence[Attachment] = (),
+    prefetch: Sequence[ToolCall] = (),
 ) -> AgentResult:
     """Convenience wrapper for a one-shot run.
 
@@ -245,4 +283,4 @@ def run_agent(
         temperature=temperature,
         max_tokens=max_tokens,
         model=model,
-    ).run(prompt, context, max_iterations)
+    ).run(prompt, context, max_iterations, attachments, prefetch)

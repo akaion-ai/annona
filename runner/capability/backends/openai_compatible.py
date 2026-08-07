@@ -32,6 +32,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from runner.capability.backends.media import encode_media
 from runner.kernel.blocks import ToolResultBlock
 from runner.kernel.errors import BackendUnavailableError
 from runner.kernel.types import (
@@ -192,11 +193,14 @@ def _encode_transcript(system: str, transcript: Transcript) -> list[dict[str, An
         text_parts: list[str] = []
         tool_calls: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
+        parts: list[dict[str, Any]] = []
 
         for block in turn.blocks:
             kind = getattr(block, "type", "")
 
-            if kind == "text":
+            if kind == "media":
+                _encode_media_part(block, parts, text_parts)
+            elif kind == "text":
                 text_parts.append(block.content)
             elif kind == "function":
                 call_id = getattr(block, "id", "") or f"call_{len(tool_calls)}"
@@ -219,11 +223,16 @@ def _encode_transcript(system: str, transcript: Transcript) -> list[dict[str, An
                     }
                 )
 
-        if text_parts or tool_calls:
+        if text_parts or tool_calls or parts:
             message: dict[str, Any] = {
                 "role": turn.role,
                 "content": " ".join(text_parts),
             }
+            if parts:
+                # The multimodal shape: content becomes a list of parts rather
+                # than a string. Only used when something visual is attached,
+                # because servers that accept only strings are still common.
+                message["content"] = [{"type": "text", "text": " ".join(text_parts)}, *parts]
             if tool_calls:
                 message["role"] = "assistant"
                 message["tool_calls"] = tool_calls
@@ -232,6 +241,23 @@ def _encode_transcript(system: str, transcript: Transcript) -> list[dict[str, An
         messages.extend(results)
 
     return messages
+
+
+def _encode_media_part(block: Any, parts: list[dict[str, Any]], text_parts: list[str]) -> None:
+    """Attach an image as a data URI, or name the file the server cannot take."""
+    media = getattr(block, "media", None)
+    path = str(getattr(media, "source", "")) if media is not None else ""
+    kind = getattr(media, "media_type", "") if media is not None else ""
+
+    encoded = encode_media(path) if path and kind == "image" else None
+    if encoded is None:
+        text_parts.append(
+            f"[attached {kind or 'file'}: {path} — read it with the document_reader tool]"
+        )
+        return
+
+    data, mime = encoded
+    parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}})
 
 
 def _describe_result(block: Any) -> str:

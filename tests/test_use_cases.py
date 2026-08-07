@@ -101,7 +101,7 @@ class Desk:
         return ToolResult(call_id=call.id, name=call.name, content=self.files[path])
 
 
-def studio_policy(root, *, on_unavailable="hold", redaction=None):
+def studio_policy(root, *, on_unavailable="hold", redaction=None, egress=None):
     """A professional practice: client files on-prem, everything else by policy.
 
     This is the shape every Italian studio has — a folder of client matters that
@@ -160,7 +160,7 @@ def studio_policy(root, *, on_unavailable="hold", redaction=None):
                     "id": "R-studio",
                     "match": {"class": "internal"},
                     "allow": ["local-gpu", "eu-cluster"],
-                    "on_unavailable": "hold",
+                    "on_unavailable": on_unavailable,
                 },
                 {
                     "id": "R-pubblico",
@@ -176,6 +176,7 @@ def studio_policy(root, *, on_unavailable="hold", redaction=None):
                 "deny_paths": ["~/.ssh/**", "**/*.pem"],
             },
             **({"redaction": redaction} if redaction else {}),
+            **({"egress": egress} if egress else {}),
         }
     )
 
@@ -333,10 +334,13 @@ def test_when_the_gpu_dies_the_work_stops_instead_of_moving_abroad(tmp_path):
 
 
 def test_with_a_redactor_the_frontier_model_answers_and_never_sees_a_name(tmp_path):
-    """**The case for rizzo-pii.** Same outage, one line of policy different.
+    """**The case for rizzo-pii.** Same outage, two lines of policy different.
 
-    Instead of stopping, the identifiers are replaced locally, the redacted
-    question goes to the best model, and the answer is re-identified here.
+    The studio's own working files are sensitive because of the names in them.
+    For that material the practice has opted into redaction — ``egress.redact``
+    names the class — so instead of stopping, the identifiers are replaced
+    locally, the redacted question goes to the best model, and the answer is
+    re-identified here.
     """
 
     class FakeRedactor:
@@ -353,6 +357,7 @@ def test_with_a_redactor_the_frontier_model_answers_and_never_sees_a_name(tmp_pa
         tmp_path,
         on_unavailable="redact",
         redaction={"provider": "rizzo-pii", "labels": {"CF": "restricted", "FULLNAME": "internal"}},
+        egress={"redact": {"allowed_for": ["internal"]}},
     )
     frontier = Substrate(
         "frontier", [Completion(text_parts=("[FULLNAME_1] ha 30 giorni dalla notifica.",))]
@@ -368,7 +373,8 @@ def test_with_a_redactor_the_frontier_model_answers_and_never_sees_a_name(tmp_pa
         redactor=FakeRedactor(),
     )
     enforcement.registry.mark_down("local-gpu", "outage")
-    enforcement.working_set.observe(matter(tmp_path), SensitivityClass.RESTRICTED)
+    enforcement.registry.mark_down("eu-cluster", "outage")
+    enforcement.working_set.observe(f"{tmp_path}/studio/nota.txt", SensitivityClass.INTERNAL)
 
     completion = enforcement.backend().complete(
         CompletionRequest(system="rispondi in italiano", transcript=())

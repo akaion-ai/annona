@@ -21,6 +21,7 @@ from typing import Any
 
 from datapizza.type import Block, FunctionCallBlock, TextBlock
 
+from runner.capability.backends.media import encode_media
 from runner.kernel.blocks import ToolResultBlock
 from runner.kernel.types import (
     Completion,
@@ -61,6 +62,9 @@ def encode_block(block: Block) -> dict[str, Any]:
     if isinstance(block, TextBlock):
         return {"type": "text", "text": block.content}
 
+    if getattr(block, "type", "") == "media":
+        return _encode_media_block(block)
+
     if isinstance(block, FunctionCallBlock):
         return {
             "type": "tool_use",
@@ -88,6 +92,33 @@ def encode_block(block: Block) -> dict[str, Any]:
         }
 
     return {"type": "text", "text": str(getattr(block, "content", block))}
+
+
+def _encode_media_block(block: Block) -> dict[str, Any]:
+    """An attached file as an Anthropic content block.
+
+    Images and PDFs have native block types and are sent as bytes. Audio and
+    video do not, and are named in text instead: the model is told the file
+    exists and where, so it can reach for the reader tool. Silently dropping it
+    would leave a model answering about a recording it was never given.
+    """
+    media = getattr(block, "media", None)
+    path = str(getattr(media, "source", "")) if media is not None else ""
+    kind = getattr(media, "media_type", "") if media is not None else ""
+
+    if path and kind in ("image", "pdf"):
+        encoded = encode_media(path)
+        if encoded is not None:
+            data, mime = encoded
+            return {
+                "type": "image" if kind == "image" else "document",
+                "source": {"type": "base64", "media_type": mime, "data": data},
+            }
+
+    return {
+        "type": "text",
+        "text": f"[attached {kind or 'file'}: {path} — read it with the document_reader tool]",
+    }
 
 
 def encode_transcript(transcript: Transcript) -> list[dict[str, Any]]:

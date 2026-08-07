@@ -127,6 +127,27 @@ class RedactionPolicy:
     default_label_class: SensitivityClass = SensitivityClass.INTERNAL
     classify: bool = False
     on_error: str = "hold"
+    floor: SensitivityClass = SensitivityClass.PUBLIC
+    """The lowest class redacted material may be reclassified to.
+
+    Without a floor, redaction launders class. A memorandum is restricted
+    *because it contains a codice fiscale*; remove the codice fiscale and the
+    same text classifies as public, and a document that was refused a moment ago
+    is cleared for a frontier model — with its subject matter untouched. The
+    reclassification is still performed, and still able to hold the step; the
+    floor stops it from concluding that material derived from a client file is
+    public.
+
+    ``public`` by default, because a floor above ``public`` makes redaction
+    incapable of enabling anything: material would land back at the class it
+    started from, which no substrate that refused it before will now accept. The
+    knob exists for the deployment that wants the stricter reading — set it to
+    ``internal`` and declare a frontier substrate that may hold internal
+    material, and redacted work runs there and nowhere lower.
+
+    The control that stops class laundering is not this field: it is
+    ``egress.redact.allowed_for`` (empty by default) and ``egress.sealed``.
+    """
 
     @property
     def enabled(self) -> bool:

@@ -27,6 +27,7 @@ from datapizza.type import Block
 
 __all__ = [
     "AgentResult",
+    "Attachment",
     "Capabilities",
     "Clearance",
     "Completion",
@@ -135,6 +136,21 @@ class ToolInvocation:
 
 
 # ── Conversation ──────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class Attachment:
+    """A file the operator put in front of the run, before any tool ran.
+
+    It is a *reference*, and the fields are the three a placement decision needs
+    to be taken about it: where it is, what kind of thing it is, and what to
+    call it in front of a person. The bytes are read once — by the adapter
+    serving a substrate that placement has already permitted to see them.
+    """
+
+    path: str
+    media_type: Literal["image", "video", "audio", "pdf"] = "image"
+    label: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +321,25 @@ class Requirement:
 
     vision: bool = False
     """The step carries images, so the substrate must be able to read them."""
+
+    prefer_quality: bool = False
+    """The operator asked for the best model this policy already allows.
+
+    It reorders the candidates a rule permits; it cannot add one. That is the
+    whole safety property of on-demand escalation: "use something better" is a
+    request about *ranking*, and a request about ranking can never turn into a
+    request about jurisdiction.
+    """
+
+    sealed: bool = False
+    """The material may not be transformed to make it crossable.
+
+    Set when the payload matches the policy's ``egress.sealed`` rules. It does
+    not change which substrates may hold the class; it removes the *escape
+    hatches* — no brief, no redaction — because both of them exist to let a
+    lowered version of the material out, and for sealed matter there is no
+    version of it that may leave.
+    """
 
 
 @dataclass(frozen=True, slots=True)
