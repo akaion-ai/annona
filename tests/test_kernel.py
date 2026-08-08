@@ -150,10 +150,13 @@ class TestLegacyShape:
             tool_calls=(ToolInvocation(tool="fs", input={"p": 1}, result="ok", error=False),),
         )
 
+        # `cancelled` is an additive field: a run that was not stopped reports
+        # False, so existing consumers reading the historical keys are unaffected.
         assert result.to_dict() == {
             "response": "done",
             "iterations": 2,
             "tool_calls": [{"tool": "fs", "input": {"p": 1}, "result": "ok", "error": False}],
+            "cancelled": False,
         }
 
 

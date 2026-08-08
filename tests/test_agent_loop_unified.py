@@ -171,6 +171,55 @@ class TestTermination:
         assert result.iterations == DEFAULT_MAX_ITERATIONS
 
 
+# ── Cancellation ──────────────────────────────────────────────────────────────
+
+
+class TestCancellation:
+    def test_cancel_set_before_the_first_turn_stops_immediately(self):
+        """A run already asked to stop never reaches the model."""
+        backend = EchoBackend([Completion(text_parts=("unused",))])
+
+        result = loop(backend).run("task", cancel=lambda: True)
+
+        assert result.cancelled is True
+        assert result.iterations == 0
+        assert result.response == ""
+        assert backend.turns_played == 0
+
+    def test_cancel_stops_the_run_between_turns_not_at_the_ceiling(self):
+        """A backend that would loop forever is stopped by the cancel predicate,
+        at the turn boundary — before the iteration ceiling, and set as cancelled."""
+        forever = Completion(
+            text_parts=("still working",),
+            tool_calls=(ToolCall(id="t", name="echo_tool"),),
+            stop_reason="tool_use",
+        )
+        backend = EchoBackend([forever] * 20)
+        executor = RecordingExecutor({"echo_tool": "output"})
+
+        turns = {"n": 0}
+
+        def cancel() -> bool:
+            # Let two turns run, then ask to stop on the third boundary.
+            turns["n"] += 1
+            return turns["n"] > 2
+
+        result = loop(backend, executor).run("loop", max_iterations=10, cancel=cancel)
+
+        assert result.cancelled is True
+        assert result.iterations == 2
+        assert backend.turns_played == 2
+
+    def test_no_cancel_predicate_leaves_the_run_uncancelled(self):
+        """The default path is unchanged: no predicate, nothing cancelled."""
+        backend = EchoBackend([Completion(text_parts=("42",), stop_reason="end_turn")])
+
+        result = loop(backend).run("what is the answer?")
+
+        assert result.cancelled is False
+        assert result.response == "42"
+
+
 # ── Tool execution ────────────────────────────────────────────────────────────
 
 

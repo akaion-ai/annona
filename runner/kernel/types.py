@@ -378,6 +378,7 @@ class AgentResult:
     response: str
     iterations: int
     tool_calls: tuple[ToolInvocation, ...] = ()
+    cancelled: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Legacy dictionary shape returned by ``AIClient.reason_and_execute``."""
@@ -385,4 +386,5 @@ class AgentResult:
             "response": self.response,
             "iterations": self.iterations,
             "tool_calls": [tc.to_dict() for tc in self.tool_calls],
+            "cancelled": self.cancelled,
         }

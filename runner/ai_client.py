@@ -32,7 +32,7 @@ Supported providers:
 """
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -466,6 +466,7 @@ Return the result in a structured format.""".format(
         attachments: Sequence[Attachment] = (),
         prefetch: Sequence[ToolCall] = (),
         prefer_quality: bool = False,
+        cancel: Callable[[], bool] | None = None,
     ) -> Any:
         """Run an agentic task: reason, call tools, repeat until done.
 
@@ -501,6 +502,7 @@ Return the result in a structured format.""".format(
                 attachments,
                 prefetch,
                 prefer_quality,
+                cancel,
             )
 
         backend = self.build_backend()
@@ -516,7 +518,9 @@ Return the result in a structured format.""".format(
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
-        return loop.run(prompt, context, max_iterations, attachments, prefetch).to_dict()
+        return loop.run(
+            prompt, context, max_iterations, attachments, prefetch, cancel=cancel
+        ).to_dict()
 
     # ── The enforced path ─────────────────────────────────────────────────────
 
@@ -557,6 +561,7 @@ Return the result in a structured format.""".format(
         attachments: Sequence[Attachment] = (),
         prefetch: Sequence[ToolCall] = (),
         prefer_quality: bool = False,
+        cancel: Callable[[], bool] | None = None,
     ) -> Any:
         """Run with placement, default-deny clearance and a ledger."""
         # One routing backend, not one per call site: it carries the placement
@@ -571,7 +576,24 @@ Return the result in a structured format.""".format(
             max_tokens=self.max_tokens,
         )
 
-        result = loop.run(prompt, context, max_iterations, attachments, prefetch).to_dict()
+        result = loop.run(
+            prompt, context, max_iterations, attachments, prefetch, cancel=cancel
+        ).to_dict()
+
+        if result.get("cancelled"):
+            # A refusal is a first-class ledger outcome; so is a stop. Recording
+            # it here — where the ledger lives — keeps `annona why`/`audit` able
+            # to reconstruct that the run ended because a person stopped it,
+            # after the turns it did complete, rather than leaving a silent gap.
+            enforcement.ledger.record(
+                "run",
+                outcome="interrupted",
+                klass=enforcement.klass,
+                detail={
+                    "reason": "cancelled by operator",
+                    "iterations": result.get("iterations", 0),
+                },
+            )
 
         placement = routing.last_placement
         result["placement"] = {

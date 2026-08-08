@@ -58,6 +58,7 @@ replacing are different acts and the second one is the one that needs the record
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -155,6 +156,48 @@ class AskRequest(BaseModel):
     the same allow-list and into the same ledger as any other read — which is
     what keeps an attachment from being a second, unpoliced way into the model.
     """
+
+    run_id: str = Field(default="", max_length=64)
+    """Client-chosen id for this run, so it can be stopped while it is running.
+
+    The client mints it (a uuid) and sends it up front, because ``/ask`` blocks
+    until the run finishes: without an id known before the call there would be
+    nothing for ``/ask/{run_id}/cancel`` to name. Empty means "not stoppable",
+    which is the old behaviour unchanged.
+    """
+
+
+# ── Run cancellation ──────────────────────────────────────────────────────────
+#
+# A run is stoppable by id. ``/ask`` registers a threading.Event under its
+# run_id for the duration of the call; ``/ask/{run_id}/cancel`` sets it; the
+# agent loop polls it between turns and stops at the next boundary. The stop is
+# cooperative — it cannot abort a single inference already in flight — which is
+# stated to the caller rather than pretended away.
+
+_RUN_CANCELS: dict[str, threading.Event] = {}
+_RUN_CANCELS_LOCK = threading.Lock()
+
+
+def _register_run(run_id: str) -> threading.Event:
+    event = threading.Event()
+    with _RUN_CANCELS_LOCK:
+        _RUN_CANCELS[run_id] = event
+    return event
+
+
+def _discard_run(run_id: str) -> None:
+    with _RUN_CANCELS_LOCK:
+        _RUN_CANCELS.pop(run_id, None)
+
+
+def _cancel_run(run_id: str) -> bool:
+    with _RUN_CANCELS_LOCK:
+        event = _RUN_CANCELS.get(run_id)
+    if event is None:
+        return False
+    event.set()
+    return True
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -639,6 +682,12 @@ def kernel_router(executor: Any | None = None) -> APIRouter:
 
         prompt, media, reads = _with_attachments(req, _policy_or_none())
 
+        # A run_id makes this run stoppable: register a cancel flag the agent
+        # loop polls between turns, and always remove it afterwards so the
+        # registry does not grow one dead event per request.
+        cancel_event = _register_run(req.run_id) if req.run_id else None
+        cancel = cancel_event.is_set if cancel_event is not None else None
+
         try:
             result = executor.ai_client.reason_and_execute(
                 prompt=prompt,
@@ -649,6 +698,7 @@ def kernel_router(executor: Any | None = None) -> APIRouter:
                 attachments=media,
                 prefetch=reads,
                 prefer_quality=req.escalate,
+                cancel=cancel,
             )
         except ConfigurationError as exc:
             # The perimeter could not be assembled. 409, not 500: nothing is
@@ -658,6 +708,9 @@ def kernel_router(executor: Any | None = None) -> APIRouter:
         except Exception as exc:  # noqa: BLE001 — surfaced, not swallowed
             logger.exception("kernel ask failed")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        finally:
+            if req.run_id:
+                _discard_run(req.run_id)
 
         new_entries = []
         if ledger.exists():
@@ -685,7 +738,22 @@ def kernel_router(executor: Any | None = None) -> APIRouter:
                 for item in result.get("egress", [])
             ],
             "sealed": result.get("sealed", ""),
+            # True when the operator stopped this run before it finished. The
+            # response still carries the turns that did complete, so the window
+            # shows partial work rather than throwing it away.
+            "cancelled": bool(result.get("cancelled", False)),
         }
+
+    @router.post("/ask/{run_id}/cancel")
+    def cancel_ask(run_id: str):
+        """Stop a run started with this ``run_id`` at its next turn boundary.
+
+        Returns ``{"cancelled": true}`` when a matching in-flight run was
+        signalled, ``false`` when there was nothing to stop — the run already
+        finished, or the id was never in flight. Idempotent: signalling twice is
+        harmless.
+        """
+        return {"cancelled": _cancel_run(run_id)}
 
     # ── Onboarding: the first policy, and only the first ──────────────────────
 

@@ -39,6 +39,7 @@ type Exchange = {
   result?: AskResult
   error?: string
   ms?: number
+  stopped?: boolean
 }
 
 function classTone(klass?: string): string {
@@ -83,6 +84,15 @@ function Answer({ x }: { x: Exchange }) {
     return (
       <div className="an-answer an-answer--error">
         <div className="an-answer__text">{x.error}</div>
+      </div>
+    )
+  }
+  // Stopped by the operator before an answer came back. Not an error, and not
+  // still running — say so plainly. Any turns that completed are in the ledger.
+  if (x.stopped && !r) {
+    return (
+      <div className="an-answer an-answer--stopped">
+        <div className="an-answer__text">Stopped.</div>
       </div>
     )
   }
@@ -168,6 +178,9 @@ export default function AskView() {
   const endRef = useRef<HTMLDivElement | null>(null)
   const picker = useRef<HTMLInputElement | null>(null)
   const depth = useRef(0)
+  // The in-flight run: its abort controller (drops the fetch so the composer
+  // frees instantly) and its run_id (names the run for the backend cancel).
+  const inflight = useRef<{ controller: AbortController; runId: string } | null>(null)
 
   useEffect(() => {
     kernel.status()
@@ -209,21 +222,44 @@ export default function AskView() {
     setPrompt("")
     setAttached([])
     setBusy(true)
+    // A stoppable run: a controller to drop the fetch, and an id the backend
+    // loop polls between turns. Both are needed — the abort frees the window,
+    // the id stops the run from finishing its work on the daemon.
+    const controller = new AbortController()
+    const runId = crypto.randomUUID()
+    inflight.current = { controller, runId }
     const started = performance.now()
     try {
       const result = await kernel.ask(
         text || "Read the attached files and tell me what they are.",
         files.map((a) => a.path),
-        { escalate },
+        { escalate, runId, signal: controller.signal },
       )
       const ms = performance.now() - started
       setHistory((h) => h.map((x) => (x.id === id ? { ...x, result, ms } : x)))
     } catch (e) {
-      const detail = e instanceof KernelError ? e.detail : String(e)
-      setHistory((h) => h.map((x) => (x.id === id ? { ...x, error: detail } : x)))
+      // Aborting the fetch is not a failure: it is the operator pressing Stop.
+      // Mark the exchange stopped rather than painting it red like a crash.
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setHistory((h) => h.map((x) => (x.id === id ? { ...x, stopped: true } : x)))
+      } else {
+        const detail = e instanceof KernelError ? e.detail : String(e)
+        setHistory((h) => h.map((x) => (x.id === id ? { ...x, error: detail } : x)))
+      }
     } finally {
+      inflight.current = null
       setBusy(false)
     }
+  }
+
+  // Stop the run in flight: tell the daemon to end it at the next turn
+  // boundary, and drop the fetch so the composer is usable immediately. The
+  // backend stop is cooperative and best-effort; the abort is what feels instant.
+  const stop = () => {
+    const run = inflight.current
+    if (!run) return
+    kernel.cancel(run.runId).catch(() => { /* run already ended; nothing to stop */ })
+    run.controller.abort()
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -425,13 +461,23 @@ export default function AskView() {
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />
-          <button
-            className="ak-pill-cta"
-            onClick={send}
-            disabled={busy || (!prompt.trim() && !attached.length)}
-          >
-            {busy ? "Running…" : "Send"}
-          </button>
+          {busy ? (
+            <button
+              className="ak-pill-cta ak-pill-cta--stop"
+              onClick={stop}
+              title="Stop this run"
+            >
+              ■ Stop
+            </button>
+          ) : (
+            <button
+              className="ak-pill-cta"
+              onClick={send}
+              disabled={!prompt.trim() && !attached.length}
+            >
+              Send
+            </button>
+          )}
         </div>
 
         {showFormats && formats && (

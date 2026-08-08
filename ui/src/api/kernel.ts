@@ -131,6 +131,9 @@ export interface AskResult {
   // What crossed, verbatim, and why nothing could.
   egress?: Egress[]
   sealed?: string
+  // True when the operator stopped this run before it finished. The turns that
+  // did complete are still present above.
+  cancelled?: boolean
 }
 
 export interface AttachmentInfo {
@@ -278,17 +281,26 @@ export const kernel = {
   ask:        (
     prompt: string,
     attachments: string[] = [],
-    opts: { escalate?: boolean; maxIterations?: number } = {},
+    opts: { escalate?: boolean; maxIterations?: number; runId?: string; signal?: AbortSignal } = {},
   ) =>
     req<AskResult>("/ask", {
       method: "POST",
+      // Drop the request when the caller aborts, so the window frees the
+      // composer the instant Stop is pressed instead of waiting out the turn.
+      signal: opts.signal,
       body: JSON.stringify({
         prompt,
         attachments,
         escalate: Boolean(opts.escalate),
         max_iterations: opts.maxIterations ?? 8,
+        run_id: opts.runId ?? "",
       }),
     }),
+
+  // Stop a run started with this run_id at its next turn boundary. Best-effort:
+  // pairs with aborting the fetch above, which is what makes Stop feel instant.
+  cancel:     (runId: string) =>
+    req<{ cancelled: boolean }>(`/ask/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
 
   // ── Attachments ─────────────────────────────────────────────────────────────
   formats:    () => req<FormatSupport>("/formats"),

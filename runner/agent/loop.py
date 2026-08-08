@@ -27,7 +27,7 @@ indirection exists.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from loguru import logger
@@ -106,6 +106,7 @@ class AgentLoop:
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
         attachments: Sequence[Attachment] = (),
         prefetch: Sequence[ToolCall] = (),
+        cancel: Callable[[], bool] | None = None,
     ) -> AgentResult:
         """Run a task to completion, or to the iteration ceiling.
 
@@ -114,6 +115,12 @@ class AgentLoop:
             context: Run context injected into the system prompt.
             max_iterations: Maximum inference turns. A run that reaches this
                 ceiling returns what it has; it does not raise.
+            cancel: Optional predicate polled between turns. When it returns
+                True the run stops at the next turn boundary and returns what it
+                has so far, with ``cancelled=True``. It cannot abort a single
+                inference already in flight — the stop lands after the current
+                turn, not mid-token — which is the honest limit of a
+                cooperative check and enough to end a run that is going wrong.
             attachments: Files put in front of the run by the operator, carried
                 as references in the first turn. They are part of the payload
                 from the first placement onward, which is the point: attaching a
@@ -146,6 +153,7 @@ class AgentLoop:
         invocations: list[ToolInvocation] = []
         response = ""
         iterations = 0
+        cancelled = False
 
         if prefetch:
             # Rendered as a tool round the model did not ask for, because that is
@@ -162,6 +170,14 @@ class AgentLoop:
             )
 
         while iterations < max_iterations:
+            if cancel is not None and cancel():
+                # Asked to stop between turns: return what we have rather than
+                # starting another inference. The stop is cooperative, so it
+                # lands here — never mid-token — and the caller sees cancelled.
+                logger.info(f"Agent run cancelled after {iterations} turn(s)")
+                cancelled = True
+                break
+
             iterations += 1
             logger.info(f"Agent turn {iterations}/{max_iterations} via {self._backend.name}")
 
@@ -195,6 +211,7 @@ class AgentLoop:
             response=response,
             iterations=iterations,
             tool_calls=tuple(invocations),
+            cancelled=cancelled,
         )
 
     # ── Internals ─────────────────────────────────────────────────────────────
@@ -270,6 +287,7 @@ def run_agent(
     model: str | None = None,
     attachments: Sequence[Attachment] = (),
     prefetch: Sequence[ToolCall] = (),
+    cancel: Callable[[], bool] | None = None,
 ) -> AgentResult:
     """Convenience wrapper for a one-shot run.
 
@@ -283,4 +301,4 @@ def run_agent(
         temperature=temperature,
         max_tokens=max_tokens,
         model=model,
-    ).run(prompt, context, max_iterations, attachments, prefetch)
+    ).run(prompt, context, max_iterations, attachments, prefetch, cancel=cancel)
