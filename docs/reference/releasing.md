@@ -153,6 +153,34 @@ it from Keychain Access as `.p12`.
 
     base64 -i DeveloperID.p12 | pbcopy      # what goes in APPLE_CERTIFICATE
 
+!!! warning "Build the `.p12` with the old algorithms, or the runner cannot open it"
+
+    OpenSSL 3 defaults to AES-256 and a SHA-256 MAC. macOS 26 imports that
+    happily; the `macos-14` runner does not, and `security import` fails with
+
+        MAC verification failed during PKCS12 import (wrong password?)
+
+    which sends you to check a password that is correct. Export from Keychain
+    Access and this cannot happen. Building it with `openssl` — the route to take
+    when the login keychain will not release the key — needs the algorithms
+    spelled out:
+
+    ```bash
+    openssl pkcs12 -export \
+      -inkey developerID.key -in developerID.crt -certfile DeveloperIDG2CA.pem \
+      -name "Developer ID Application: NAME (TEAMID)" \
+      -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1 \
+      -out DeveloperID.p12
+    ```
+
+    Include the **G2 intermediate** (`-certfile`), from
+    <https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer>: a runner has
+    no reason to already trust it, and without it `codesign` produces a signature
+    whose chain stops short of Apple's root.
+
+    And pick **G2 Sub-CA** when Apple asks. The *Previous Sub-CA* option issues a
+    certificate that expires on 1 February 2027 whatever the date is today.
+
 ### Windows
 
 Still unsigned; SmartScreen warns and a user clicks *More info* → *Run anyway*.
