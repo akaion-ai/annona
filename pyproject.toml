@@ -228,21 +228,19 @@ strict_equality = true
 
 # ── Typing debt ledger ────────────────────────────────────────────────────────
 #
-# These modules predate type checking and currently report 20 errors between
+# These modules predate type checking and currently report 19 errors between
 # them. They are listed individually, rather than excluded by a wildcard, so the
 # debt is countable and shrinks by deletion: type a module, remove its line.
 #
-# Two of these are real defects rather than annotation gaps, and are tracked in
+# One of these is a real defect rather than an annotation gap, and is tracked in
 # docs/reference/typing-debt.md rather than fixed here — Phase 0 is a refactor
-# with no behaviour change, and both fixes alter behaviour:
+# with no behaviour change and the fix alters behaviour:
 #   * runner/local_api.py:225,257 — a missing note is passed to NoteOut.from_note
 #     as None, which raises instead of returning 404.
-#   * runner/sync/engine.py:92 — a str is placed where the payload declares int.
 [[tool.mypy.overrides]]
 module = [
   "runner.cli",
   "runner.local_api",
-  "runner.sync.engine",
   "runner.tools.*",
   "runner.tui",
 ]

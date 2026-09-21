@@ -1,6 +1,6 @@
 # Typing debt
 
-`mypy` runs over the whole package and passes. It passes because five modules are
+`mypy` runs over the whole package and passes. It passes because four modules are
 listed in a ledger in `pyproject.toml` under `ignore_errors`, not because they are
 clean.
 
@@ -20,14 +20,13 @@ are checked with `disallow_untyped_defs`, `warn_return_any` and
 | `runner.tools.*` | 6 | One design defect, six manifestations — see below |
 | `runner.cli` | 2 | `str \| None` passed where `str` is required |
 | `runner.local_api` | 2 | **Real defect** — see below |
-| `runner.sync.engine` | 1 | **Real defect** — see below |
 | `runner.tui` | — | Untyped module, notes only |
 
-## Two of these are defects, not annotation gaps
+## One of these is a defect, not an annotation gap
 
-Both are left in place deliberately. Phase 0 is a refactor that changes no
-behaviour, and both fixes change behaviour — they belong in their own change,
-with their own tests.
+It is left in place deliberately. Phase 0 is a refactor that changes no
+behaviour and the fix changes behaviour — it belongs in its own change, with its
+own tests.
 
 ### `runner/local_api.py:225,257` — a missing note raises instead of 404
 
@@ -41,12 +40,6 @@ exist produces a 500.
 
 The fix is a `None` check and an `HTTPException(404)`, which changes the
 response an existing client sees — hence not here.
-
-### `runner/sync/engine.py:92` — a string in an integer field
-
-A `str` is placed into a payload field the surrounding dictionary types as `int`.
-Whether the receiving backend coerces it, ignores it, or has been silently
-rejecting it needs checking against the API before changing what is sent.
 
 ### `runner/tools/*` — one defect, six reports
 

@@ -13,7 +13,7 @@ Local-first: every method checks auth BEFORE building an httpx client.
 With no credentials sync is a silent no-op, never a `Bearer None` request.
 """
 
-from typing import Dict
+from typing import TypedDict
 
 import httpx
 from loguru import logger
@@ -34,6 +34,17 @@ _NETWORK_ERRORS = (
 
 class SyncError(Exception):
     """A sync-side failure: missing auth, invalid payload, and so on."""
+
+
+class _PushCounts(TypedDict):
+    synced: int
+    errors: int
+
+
+class PushResult(_PushCounts, total=False):
+    """Body of POST /api/sync/push. `error` is present only on a skipped push."""
+
+    error: str
 
 
 class SyncEngine:
@@ -67,7 +78,7 @@ class SyncEngine:
 
     # ── Push ──────────────────────────────────────────────────────────────────
 
-    def push_pending(self) -> Dict[str, int]:
+    def push_pending(self) -> "PushResult":
         """
         Send every note with sync_status=pending_sync to the cloud.
         Returns {"synced": N, "errors": M, "error"?: "not_authenticated"}.
