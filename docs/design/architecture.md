@@ -147,8 +147,8 @@ behaviour they have always had, and Phase 2 replaces it.
 
 ```
 ~/akaion-brain/                  vault — markdown, greppable, Git-friendly
-├── notes/*.md
-└── .akaion/index.db             SQLite index for search and sync state
+├── notes/*.md                   body + YAML frontmatter: the record of truth
+└── .akaion/index.db             SQLite cache for search, rebuilt from the notes
 
 ~/.akaion/
 ├── config.yaml                  configuration
@@ -158,6 +158,13 @@ behaviour they have always had, and Phase 2 replaces it.
 
 The vault format is a guarantee, not an implementation detail: you can walk away
 from the runner and keep your data in a form any tool can read.
+
+Each note's title, tags and sync state are in its frontmatter, and the index is
+refreshed from the files every time the vault is opened — **where they disagree,
+the file wins**. Delete `index.db` and the next open rebuilds it unchanged; edit
+a note's `title:` or `tags:` in another editor and the runner picks it up. A
+hand-typed sync state is checked, not trusted: an unknown value, or `synced`
+with no `cloud_message_id`, reads as `local_only`.
 
 ## Network behaviour
 

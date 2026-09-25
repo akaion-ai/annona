@@ -15,7 +15,7 @@ Struttura su disco:
 import json
 import re
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -84,6 +84,14 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
     return datetime.fromisoformat(s) if s else None
 
 
+def _parse_iso(s: str) -> Optional[datetime]:
+    """``s`` as a datetime, or ``None`` when a hand-typed value is not one."""
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
+
+
 class BrainManager:
     """Local note CRUD backed by a SQLite index."""
 
@@ -98,7 +106,11 @@ class BrainManager:
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._migrate()
+        # Order matters: notes written before the vault carried metadata get it
+        # from the index first, and only then is the index refreshed from the
+        # files — otherwise a pre-migration note would be read back untitled.
         self._backfill_frontmatter()
+        self.rebuild_index()
         logger.info(f"BrainManager ready: {self.brain_dir}")
 
     def _migrate(self):
@@ -188,6 +200,106 @@ class BrainManager:
         if migrated:
             logger.info(f"Vault migrated: frontmatter written to {migrated} note(s)")
         return migrated
+
+    def rebuild_index(self) -> int:
+        """Refresh the index from the notes on disk. **The file wins.**
+
+        The inverse of :meth:`_backfill_frontmatter`, and what makes the index a
+        cache rather than a second record: every ``notes/*.md`` is parsed and its
+        frontmatter written into the index, replacing whatever the index held.
+        A vault copied without ``.akaion/index.db`` therefore opens with every
+        title, tag and sync state it had, and editing a note's frontmatter in
+        another editor is a supported way to retitle or retag it.
+
+        Runs on every open. The runner's own writes keep file and index in step,
+        so in practice this only changes something after a hand edit or a lost
+        index. It never removes a row: a note whose file was pruned by hand stays
+        listed, with an empty body, as it always has.
+
+        Returns how many notes were read.
+        """
+        indexed = 0
+        for path in sorted(self.notes_dir.glob("*.md")):
+            try:
+                metadata, body = frontmatter.parse(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError) as exc:
+                logger.warning(f"Vault: {path.name} could not be read ({exc}); not indexed")
+                continue
+            self._index_from_file(path.stem, metadata, body, path)
+            indexed += 1
+        self._conn.commit()
+        return indexed
+
+    def _index_from_file(self, note_id: str, metadata: dict, body: str, path: Path) -> None:
+        """Upsert one note's row and search entry from what its file says.
+
+        The id is the filename, not the ``id:`` field: every other method finds a
+        note's file by ``<id>.md``, so a disagreeing field cannot be honoured
+        without orphaning the file. Values a human could have typed are checked
+        rather than trusted — above all the sync state, since believing a
+        hand-written ``sync: synced`` would stop a note from ever being pushed.
+        """
+        mtime = datetime.utcfromtimestamp(path.stat().st_mtime).isoformat()
+
+        def timestamp(value: object) -> str:
+            if isinstance(value, datetime):
+                return value.isoformat()
+            if isinstance(value, date):  # `created: 2026-09-25`, typed by hand
+                return datetime.combine(value, datetime.min.time()).isoformat()
+            if isinstance(value, str) and _parse_iso(value):
+                return value
+            return mtime
+
+        def text(value: object) -> Optional[str]:
+            return str(value) if value not in (None, "") else None
+
+        raw_tags = metadata.get("tags")
+        if isinstance(raw_tags, list):
+            tags = [str(t) for t in raw_tags if t not in (None, "")]
+        elif raw_tags not in (None, ""):
+            tags = [str(raw_tags)]
+        else:
+            tags = []
+
+        message_id = text(metadata.get("cloud_message_id"))
+        sync = metadata.get("sync")
+        if sync not in (SYNC_LOCAL_ONLY, SYNC_PENDING, SYNC_SYNCED, SYNC_ERROR):
+            sync = SYNC_LOCAL_ONLY
+        elif sync == SYNC_SYNCED and not message_id:
+            sync = SYNC_LOCAL_ONLY  # "synced" to nothing is not a push that happened
+
+        title = text(metadata.get("title")) or note_id
+        self._conn.execute(
+            """INSERT INTO notes (id, title, tags, sync_status, cot_message_id,
+                                  cot_cluster_id, cot_cluster_name, created_at,
+                                  updated_at, synced_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 title = excluded.title, tags = excluded.tags,
+                 sync_status = excluded.sync_status,
+                 cot_message_id = excluded.cot_message_id,
+                 cot_cluster_id = excluded.cot_cluster_id,
+                 cot_cluster_name = excluded.cot_cluster_name,
+                 created_at = excluded.created_at, updated_at = excluded.updated_at,
+                 synced_at = excluded.synced_at""",
+            (
+                note_id,
+                title,
+                json.dumps(tags),
+                sync,
+                message_id,
+                text(metadata.get("cloud_cluster_id")),
+                text(metadata.get("cloud_cluster_name")),
+                timestamp(metadata.get("created")),
+                timestamp(metadata.get("updated")),
+                timestamp(metadata["synced_at"]) if metadata.get("synced_at") else None,
+            ),
+        )
+        self._conn.execute("DELETE FROM notes_fts WHERE id = ?", (note_id,))
+        self._conn.execute(
+            "INSERT INTO notes_fts (id, title, content) VALUES (?, ?, ?)",
+            (note_id, title, body),
+        )
 
     def _delete_md(self, note_id: str):
         p = self._note_path(note_id)

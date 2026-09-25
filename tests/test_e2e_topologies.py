@@ -187,6 +187,41 @@ class TestDetached:
         assert recovered["id"] == note.id
         assert body.strip() == "Call the client"
 
+    def test_a_vault_whose_index_is_lost_is_rebuilt_unchanged(self, tmp_path: Path):
+        """Delete the index, reopen the vault, and nothing that made it findable is gone.
+
+        The test above proves the metadata is *in* the files. This one proves the
+        runner reads it back: before, a reopened vault without `index.db` listed
+        no notes at all, because nothing went files → index (#6).
+        """
+        from runner.brain.manager import BrainManager
+
+        vault = tmp_path / "vault"
+        brain = BrainManager(vault)
+        first = brain.create(title="Matter 2026-118", content="Call the client", tags=["work"])
+        second = brain.create(title="Groceries", content="Oat milk", tags=["home", "list"])
+        brain.mark_pending(first.id)
+        brain.mark_synced(second.id, "msg-1", "cluster-7", "Errands")
+        before = {n.id: n for n in brain.list()}
+        brain.close()
+
+        (vault / ".akaion" / "index.db").unlink()
+
+        rebuilt = BrainManager(vault)
+        after = {n.id: n for n in rebuilt.list()}
+        assert after.keys() == before.keys()
+        for note_id, note in before.items():
+            again = after[note_id]
+            assert (again.title, again.content, again.tags) == (note.title, note.content, note.tags)
+            assert (again.sync_status, again.cot_message_id, again.cot_cluster_id) == (
+                note.sync_status,
+                note.cot_message_id,
+                note.cot_cluster_id,
+            )
+            assert (again.created_at, again.updated_at) == (note.created_at, note.updated_at)
+        assert [n.id for n in rebuilt.search("client")] == [first.id]
+        rebuilt.close()
+
     def test_sync_without_credentials_is_a_silent_no_op(self, tmp_path: Path):
         """Not a crash, and above all not a `Bearer None` request."""
         from unittest.mock import MagicMock

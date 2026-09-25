@@ -229,3 +229,77 @@ class TestMigration:
         reopened = BrainManager(vault)
         assert reopened.get(note.id).content == ""
         reopened.close()
+
+
+class TestFilesAreAuthoritative:
+    """The index is a cache of the files; where they disagree, the file wins (#6)."""
+
+    def test_retagging_a_note_in_another_editor_reaches_the_index(self, tmp_path: Path):
+        vault = tmp_path / "vault"
+        brain = BrainManager(vault)
+        note = brain.create(title="Draft", content="body", tags=["old"])
+        brain.close()
+
+        path = vault / "notes" / f"{note.id}.md"
+        text = path.read_text(encoding="utf-8")
+        path.write_text(
+            text.replace("title: Draft", "title: Final").replace("[old]", "[new, filed]"),
+            encoding="utf-8",
+        )
+
+        reopened = BrainManager(vault)
+        again = reopened.get(note.id)
+        assert again.title == "Final"
+        assert again.tags == ["new", "filed"]
+        assert reopened.find_note_by_tag("filed").id == note.id
+        reopened.close()
+
+    def test_a_markdown_file_dropped_into_the_vault_becomes_a_note(self, tmp_path: Path):
+        vault = tmp_path / "vault"
+        BrainManager(vault).close()
+        (vault / "notes" / "meeting.md").write_text(
+            "---\ntitle: Board meeting\ntags: [minutes]\n---\n\nApproved the budget\n",
+            encoding="utf-8",
+        )
+
+        reopened = BrainManager(vault)
+        note = reopened.get("meeting")
+        assert note.title == "Board meeting"
+        assert note.content == "Approved the budget\n"
+        assert [n.id for n in reopened.search("budget")] == ["meeting"]
+        reopened.close()
+
+    def test_a_file_without_frontmatter_is_titled_by_its_name(self, tmp_path: Path):
+        vault = tmp_path / "vault"
+        BrainManager(vault).close()
+        (vault / "notes" / "loose-thoughts.md").write_text("just prose\n", encoding="utf-8")
+
+        reopened = BrainManager(vault)
+        note = reopened.get("loose-thoughts")
+        assert note.title == "loose-thoughts"
+        assert note.tags == []
+        assert note.sync_status == "local_only"
+        reopened.close()
+
+    def test_an_unknown_sync_state_in_a_file_is_not_trusted(self, tmp_path: Path):
+        """A hand-typed `sync: synced` must not make the runner believe a push happened."""
+        vault = tmp_path / "vault"
+        BrainManager(vault).close()
+        (vault / "notes" / "n.md").write_text(
+            "---\ntitle: N\nsync: definitely-synced\n---\n\nx\n", encoding="utf-8"
+        )
+
+        reopened = BrainManager(vault)
+        assert reopened.get("n").sync_status == "local_only"
+        reopened.close()
+
+    def test_synced_with_no_cloud_id_is_not_a_push_that_happened(self, tmp_path: Path):
+        vault = tmp_path / "vault"
+        BrainManager(vault).close()
+        (vault / "notes" / "n.md").write_text(
+            "---\ntitle: N\nsync: synced\n---\n\nx\n", encoding="utf-8"
+        )
+
+        reopened = BrainManager(vault)
+        assert reopened.get("n").sync_status == "local_only"
+        reopened.close()

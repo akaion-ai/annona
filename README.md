@@ -594,7 +594,6 @@ a build failure.
 | **The ledger has no external anchor** | tamper-evident against edits, deletions and reordering; a chain rebuilt wholesale by someone with write access is not detectable | F3 |
 | **Queued steps are not resumed automatically** | `on_unavailable: queue` records the decision; retrying is manual | F2 |
 | **Installations that predate the policy engine are still allow-by-default** | a fresh install writes a policy alongside its config and is default-deny from its first start; an existing one without a policy keeps the old permission manager, and says so on every start and in `annona status` — `annona policy init` is what switches it | F1 |
-| **Vault metadata is not portable** | markdown holds the body; titles, tags and sync state live only in SQLite | F3 |
 | **No measured leak rate at scale** | zero over the acceptance corpus and the live model tests; the 1 000-step number is not run yet | F2 |
 
 Each has a metric and a target rather than a promise —
