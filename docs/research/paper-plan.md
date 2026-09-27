@@ -4,7 +4,25 @@
 needs. Companion to [related work](related-work.md). No number below may appear in a paper until
 the run that produced it is committed with its inputs.*
 
-**Verdict.** The mechanisms exist and are tested (975 tests, 35 of them live/container and skipped
+## Status — 2026-09-27, evening
+
+Findings 1–3 are closed and the measurements exist; the paper is in `paper/` (`make paper`).
+
+| | Done | Result (experiments/results/) |
+|---|---|---|
+| Finding 1 · circular canary | `experiments/harness.py`: canaries unique per document, listed in no policy | E2 |
+| Finding 2 · network tools | `tools.egress`, ceiling `public` for browser and shell; `network:<tool>` in the ledger | E2: 80.4% of restricted documents left through the browser before, 0 after |
+| Finding 3 · classifier seam | `ContentModel` port, `SystemOneJudge` (Jev-compatible, conformal τ) | E2: leak 0.8% / 0.2% at α 0.05 / 0.01, within misfiled × α |
+| New · `annona comply` | policy fingerprint per run; six invariants re-derived from ledger + policy | E3: six injected faults each caught by their invariant; 0 violations over 26,521 correct entries |
+| New · witness | `runner/audit/witness.py` | E4: truncation and re-hashed rewrite 0% → 100% below the last checkpoint |
+| M6 · overhead | `experiments/overhead.py` | E6: 0.1–3 ms per step; audit 50 µs per entry |
+| M8 · AgentDojo | `experiments/dojo.py`, unmodified loop, local qwen2.5:14b | E5: running |
+
+Still open: a real judge in E2 (Iovis or rizzo-flow with a fitted threshold); M5 cost/privacy
+frontier; M7 constrained decoding; adaptive attacks on the classifier; composition with FIDES;
+attestation of the ledger writer.
+
+**Verdict (audit of the morning).** The mechanisms exist and are tested (975 tests, 35 of them live/container and skipped
 without env vars); **no paper-grade number exists yet.** What we have are deterministic tests against
 scripted stubs, one live acceptance script (`make verify`) and one small tool-use bench. Without the
 measurements below the paper is a whitepaper.

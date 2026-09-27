@@ -1,0 +1,25 @@
+\begin{abstract}
+An organisation that deploys LLM agents runs every step somewhere: on its own GPU, on a
+cluster it rents, or at a frontier API. Today that choice is a configuration line, taken
+once per deployment. Information-flow defences for agents decide which data may reach which
+\emph{tool}, assuming a single model provider; privacy-aware routers decide per \emph{prompt}
+between a local and a cloud model, with learned gates and no enforcement. We present
+\annona, an open-source execution kernel in which the \emph{execution substrate} of every
+agent step --- each inference and each tool call --- is the enforced object of a
+default-deny policy over a monotone sensitivity class. A step whose class forbids every
+available substrate is \emph{held}, never failed over; a tool that reaches the network is
+treated as an undeclared substrate with its own ceiling; and every decision is written to a
+hash-chained ledger that opens with the fingerprint of the policy it ran under. From that
+ledger and the policy file alone, a third party can re-derive every placement and check six
+invariants without contacting the daemon. We show that when a calibrated content classifier
+with a conformal miss rate $\alpha$ raises the class on top of the policy's paths, the leak
+rate of restricted material is bounded by the misfiled share times $\alpha$. We evaluate
+with canaries no policy lists. Against an adversarial agent over 1{,}500 tasks, a failover
+gateway leaks 42.2\% of restricted documents; \annona{} with paths only leaks exactly its
+misfiled share (22.6\%); with a judge at $\alpha{=}0.05$ and $0.01$ it leaks 0.8\% and
+0.2\%, within the bound. Before a fix this work motivated, a browser tool let 80.4\% of
+restricted documents out through its arguments. The auditor detects each of six injected
+placement faults, with no false positives over 26{,}521 entries of correct runs; a witness
+checkpoint closes the two edits a hash chain cannot see. The perimeter costs 0.1--3\,ms per
+step. On AgentDojo, run through the unmodified loop with a local 14B model, \tbd.
+\end{abstract}

@@ -1,0 +1,56 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Information-flow control for agents.} CaMeL~\citep{debenedetti2025camel} has a
+privileged model turn the trusted query into a program, attaches capabilities to values and
+checks policies at every tool call; FIDES~\citep{costa2025fides} tracks confidentiality and
+integrity labels in the planner and can hide values from it; f-secure~\citep{wu2024fsecure}
+separates planner, executor and monitor under a formal IFC model;
+RTBAS~\citep{zhong2025rtbas} propagates labels with LM and attention screeners and asks the user
+when unsure; Progent~\citep{shi2025progent} expresses least-privilege tool policies in a DSL;
+Conseca~\citep{tsai2025conseca} generates contextual policies just in time;
+GAAP~\citep{stanley2026gaap} is an execution environment that enforces confidentiality over
+persistent stores. \annona's default-deny, per-call enforcement over monotone labels is in
+this lineage. The difference is the sink: these systems constrain which data reaches which tool
+or recipient under one model provider; \annona{} makes the substrate that runs each inference
+the enforced variable, holds rather than degrades, and leaves evidence for a third party. The
+two compose: an IFC planner can run inside a placed step. Siddiqui et
+al.~\citep{siddiqui2024permissive} argue for labelling a model's output by the inputs that
+influenced it rather than by their join --- the formal counterpart of our reclassified brief,
+whose soundness we leave open.
+
+\paragraph{Privacy-aware delegation and routing.} PAPILLON~\citep{li2025papillon} has a local
+model write the prompt an API model sees and compose the answer locally --- our brief, for
+single queries, with leakage measured on real user data; CoGenesis~\citep{zhang2024cogenesis},
+Minions~\citep{narayan2025minions} and PlanTwin~\citep{yu2026plantwin} split work between a
+local and a cloud model for privacy or cost. PRISM~\citep{zhan2026prism} routes each prompt
+among local, cloud and collaborative execution by entity-level sensitivity with a soft gate.
+Cost and quality routers --- RouteLLM~\citep{ong2024routellm}, Hybrid LLM~\citep{ding2024hybrid}
+--- place per request with no notion of sensitivity; our gateway baseline is their behaviour
+under failure. None of these enforces a policy per agent step over tools, holds, or records.
+
+\paragraph{Sanitisation.} Hide and Seek~\citep{chen2023hideandseek} anonymises locally and
+restores the answer locally; DP rewriting and perturbation~\citep{utpala2023dpprompt,tong2023inferdpt}
+trade utility for formal guarantees. LLMs infer attributes from anonymised
+text~\citep{staab2024beyond} and reconstruct sanitised text~\citep{pang2025reconstruction},
+which is why \annona{} treats redaction as a policy-gated declassification with sealed
+matters, not as a guarantee.
+
+\paragraph{Tamper-evident logs, attestation and verifiable inference.} Hash-chained audit logs
+go back to Schneier and Kelsey~\citep{schneier1999audit} and Crosby and
+Wallach~\citep{crosby2009tamper}; witness checkpoints follow Certificate Transparency. Recent
+work logs agent actions in hash chains with external anchoring~\citep{bindschaedler2026flight}
+and defines auditability for agents~\citep{nian2026auditable}. We log a different object ---
+the placement decision with its candidates and the run's class --- so that compliance with a
+sovereignty policy, not only the sequence of actions, can be checked. Proving that a step ran
+where the ledger says needs attestation: confidential GPUs~\citep{zhu2024hopper}, attested
+agent runtimes~\citep{abdollahi2026agentee}, verifiable transparency of server
+images~\citep{apple2024pcc}, or proofs over activations~\citep{ong2025toploc}.
+
+\paragraph{Measuring leakage.} Canaries are the standard instrument for
+memorisation~\citep{carlini2019secret}; AgentLeak~\citep{elyagoubi2026agentleak} finds that
+output-only audits miss most leaks in multi-agent systems and measures at internal channels,
+as we do at every egress. AgentDojo~\citep{debenedetti2024agentdojo} and
+InjecAgent~\citep{zhan2024injecagent} measure injection; adaptive attacks break detection-based
+defences~\citep{zhan2025adaptive}, which is one reason \annona's guarantees do not rest on
+detecting injection.

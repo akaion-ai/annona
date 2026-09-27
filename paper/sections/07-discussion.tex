@@ -1,0 +1,38 @@
+\section{Limitations and future work}
+\label{sec:discussion}
+
+\paragraph{A truthful writer.} The audit checks that recorded decisions were the prescribed
+ones; it cannot check that the record is true. A component that misbehaves and records
+consistently passes. Evidence independence (\cref{sec:eval-compliance}) narrows what an
+accidental defect can hide; a deliberate one needs attestation of the code that writes the
+ledger --- measured boot of the appliance and, per substrate, attestation evidence recorded with
+each placement.
+
+\paragraph{The classifier is the trusted base.} \Cref{prop:leak} moves the whole risk into
+two numbers: how often material is stored where the policy does not expect it, and how often
+the judge misses. Our E2 judge has a known miss rate by construction; the next measurement is a
+real one --- a calibrated model with its threshold fitted on labelled documents --- including
+under adaptive inputs written to look harmless. The independence of misfiling and misjudging is
+an assumption to test, not a fact.
+
+\paragraph{Declassification.} Briefs and redaction let material out by design. We reclassify
+their output and seal matters that must never travel, but do not prove that a brief of
+restricted material carries only what its class permits; permissive information-flow
+analysis~\citep{siddiqui2024permissive} is the natural route.
+
+\paragraph{Tools that do not declare their egress.} The network ceiling covers tools the policy
+knows reach the network. A tool whose code sends data through a channel it does not declare
+is out of our threat model; sandboxing the tool is the complement.
+
+\paragraph{The adversary in E2--E4 is scripted.} It always attempts the most damaging sequence,
+which bounds what a model could do with those tools, but it does not adapt. E5 uses a real
+model under AgentDojo's attacks; adaptive attacks against the classifier remain to be run.
+
+\section{Conclusion}
+
+Where an agent's step runs is a security decision taken thousands of times a day. \annona{}
+takes it per step, under a default-deny policy over a class that only rises, holds rather than
+degrades, treats network tools as the substrates they are, and records every decision so that
+someone holding only the ledger and the policy can check it. Measured with canaries no policy
+lists, the perimeter leaks exactly what its classifier misses; with a calibrated judge that
+becomes a number an operator chooses. The system, the harness and every result are open.

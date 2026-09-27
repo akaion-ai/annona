@@ -1,0 +1,73 @@
+\section{Introduction}
+\label{sec:intro}
+
+An organisation adopting LLM agents is usually offered three architectures: run open models
+on its own hardware (private, capped by that hardware), call frontier APIs (excellent, and the
+material leaves), or run its own weights in a rented cloud (a compromise that costs an MLOps
+team). The industry argues about which column wins. We argue that the argument is the
+mistake: \emph{the right column is a property of the request, not of the company}.
+Summarising a public tender and reasoning over a client's file are different problems, and
+the second does not become safe because procurement signed a data-processing agreement.
+
+The unit of decision is therefore the \emph{step}, and something has to take that decision
+consistently, thousands of times a day, and be able to show afterwards what it decided.
+Three bodies of work come close, and none of them owns that decision:
+
+\begin{itemize}
+  \item \textbf{Information-flow control for agents} --- CaMeL~\citep{debenedetti2025camel},
+    FIDES~\citep{costa2025fides}, RTBAS~\citep{zhong2025rtbas}, Progent~\citep{shi2025progent},
+    GAAP~\citep{stanley2026gaap} --- labels data and checks, at every tool call, which data
+    may reach which \emph{tool or recipient}. The model that reads the data is assumed to be
+    one provider; where the inference itself runs is not a policy variable.
+  \item \textbf{Privacy-aware routing and local--cloud collaboration} ---
+    PAPILLON~\citep{li2025papillon}, PRISM~\citep{zhan2026prism},
+    Minions~\citep{narayan2025minions} --- chooses per \emph{prompt} between a local and a
+    cloud model, or lets a local model write what the cloud sees. Gates are learned or soft,
+    leakage is measured rather than prevented, and nothing is left for an auditor.
+  \item \textbf{AI gateways} route token streams to endpoints with a fallback list ordered by
+    availability. They never see a file or execute a tool, and when the preferred endpoint is
+    down they fail over --- which, for sensitive material, is the leak.
+\end{itemize}
+
+\paragraph{\annona.} We make the execution substrate of every agent step --- each inference
+and each tool call --- the enforced object of a default-deny policy over a monotone
+sensitivity class (\cref{sec:design}). Its contributions are:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Placement as the enforced object, fail-closed.} A step is placed on one of
+    several trust tiers by the rule for its class; the class of a run only rises, so the
+    transcript cannot be walked around by ordering steps; a step no permitted substrate can
+    take is \emph{held}, never degraded. A tool that reaches the network is treated as what it
+    is --- an undeclared substrate --- with a ceiling of its own. The last point closes a gap
+    that any perimeter guarding inference alone has: in our own system before this work, a
+    browser tool let 80.4\% of restricted documents out through its arguments
+    (\cref{sec:eval-leak}).
+  \item \textbf{Verifiable placement evidence.} The ledger binds every run to the fingerprint of
+    its policy, and records candidates, rejections and the run's class with every decision.
+    From the ledger and the policy file alone, \texttt{annona comply} re-derives each
+    placement and checks six invariants (bound, sound, optimal, hold-justified, monotone,
+    egress). Injected placement faults are each caught by the invariant that names them, with
+    zero false positives (\cref{sec:eval-compliance}); a witness checkpoint closes truncation
+    and re-hashed rewrites, the two edits a chain cannot see (\cref{sec:eval-tamper}).
+  \item \textbf{A composed leak bound.} Classes from paths and patterns miss material stored
+    where the policy does not expect it. A calibrated content judge raises the class on top of
+    them, with a threshold fitted by split conformal prediction~\citep{vovk2005alrw} so that
+    it misses a restricted text with probability at most $\alpha$. Because placement is sound
+    for the class it receives and the class only rises, the leak rate is bounded by the
+    misfiled share times $\alpha$ (\cref{sec:guarantees}); the measured rates sit inside the
+    bound (\cref{sec:eval-leak}).
+  \item \textbf{An evaluation that is not circular.} A leak rate of zero measured with canaries
+    the policy lists proves only that string matching works. Our canaries are unique per
+    document and listed nowhere; ground truth comes from the generator, the agent is
+    adversarial, every substrate is a wiretap. We also run AgentDojo~\citep{debenedetti2024agentdojo}
+    through the unmodified agent loop with a local model (\cref{sec:eval-dojo}). The harness is
+    released with the system.
+\end{enumerate}
+
+\paragraph{What we do not claim.} None of \annona's mechanisms is new on its own: default-deny
+policy over labelled data, local briefs for a cloud model, pseudonymisation with local
+restoration, hash-chained logs and canaries all have precedents (\cref{sec:related}). The claim
+is the unit of control --- the substrate of every step --- together with fail-closed hold
+semantics and evidence a third party can check. The ledger records what the daemon decided,
+not a proof of what ran; closing that gap needs attestation of the writer
+(\cref{sec:discussion}).

@@ -1,0 +1,57 @@
+\section{Guarantees}
+\label{sec:guarantees}
+
+We state the properties the evaluation tests. The arguments are short because the mechanisms
+are; their value is in making explicit which assumption each property rests on.
+
+\begin{proposition}[Soundness given a correct class]
+\label{prop:sound}
+If every source the run touches is classified at or above its true class, the run is
+placement-safe with respect to inference and declared network tools.
+\end{proposition}
+
+\begin{proof}[Argument]
+By induction on steps. The working set's class $w_t$ is non-decreasing and, by hypothesis, at
+least the true class of every source touched up to step $t$; every payload is derived from
+those sources, so its true class is at most $w_t$. An inference is placed only on a substrate
+$s$ with $\maxc(s) \succeq w_t$ (the engine's ceiling check), or held. A network tool runs
+only if $w_t \preceq$ its ceiling. A brief or redaction crosses only after reclassification;
+its soundness is an assumption we do not discharge here.
+\end{proof}
+
+\begin{proposition}[Composed leak bound]
+\label{prop:leak}
+Let $M$ be the event that a restricted document is \emph{misfiled} --- its paths and patterns
+give a class below \res --- and let the content judge miss a restricted text with probability
+at most $\alpha$ (conformal threshold, exchangeable calibration). If the judge's miss is
+independent of $M$, then under the hypotheses of \cref{prop:sound} for every other source,
+\[
+  \Pr[\text{a restricted document reaches a substrate below \res}] \;\le\; \Pr[M]\cdot\alpha .
+\]
+\end{proposition}
+
+\begin{proof}[Argument]
+A document can leak only if its class is underestimated (\cref{prop:sound}). The class is
+the maximum of the path/pattern class and the judge's, so it is underestimated only if both
+are: $\Pr[M \wedge \text{miss}] = \Pr[M]\Pr[\text{miss}] \le \Pr[M]\,\alpha$.
+\end{proof}
+
+The independence assumption is plausible when misfiling is about \emph{where} a file is saved
+and the judge sees only \emph{what} it says; it fails if the same property that makes a
+document easy to misfile also makes it hard to judge. \Cref{sec:eval-leak} measures both sides
+of the inequality.
+
+\begin{proposition}[What the audit establishes]
+\label{prop:audit}
+If the writer records each decision truthfully and the chain verifies, \texttt{comply}
+reports no violation if and only if every recorded run named the audited policy, every
+permitted placement was allowed, could hold its class and was the rule's first choice among
+the recorded candidates, every hold had no candidate, no inference was placed below a class
+the run had reached, and no network tool ran above its ceiling.
+\end{proposition}
+
+Each invariant is a predicate over one entry, the policy, and a per-run running maximum, so the
+audit is linear in the ledger. What it cannot establish is that the entries are true: a
+component that both misbehaves and records consistently passes. This is the gap attestation of
+the writer addresses (\cref{sec:discussion}), and the reason we design labels so that a defect
+in a control does not also rewrite the evidence of that control.

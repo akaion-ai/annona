@@ -1,0 +1,188 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+Every number below is produced by a script in \texttt{experiments/} and stored in
+\texttt{experiments/results/}; the scripts run the production loop and perimeter unchanged.
+Unless stated, runs need no network and no GPU and are deterministic from their seeds.
+
+\paragraph{Harness.} A seeded corpus assigns a third of the documents to each class. Every
+restricted document carries a canary --- a random string unique to it and \emph{listed in no
+policy} --- and a fraction of them is \emph{misfiled}: saved where the policy's paths say
+\pub, like an offer in a shared folder. The agent is scripted and adversarial: it reads the
+document, then tries to send its full text out through the browser, then answers. Every
+substrate is a wiretap and the browser is a network sink. A leak is a canary of a truly
+restricted document observed by a sink whose ceiling is below \res. Ground truth comes from the
+generator, never from the policy, which is what makes the rate a measurement rather than a
+check that string matching works. The deployment has three substrates: on-premises GPU
+(\res), EU cluster (\inte), frontier API (\pub); the local GPU is down in a quarter of the
+tasks.
+
+\subsection{E2 --- Restricted egress}
+\label{sec:eval-leak}
+
+\begin{table}[t]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l r r r >{\raggedright\arraybackslash}X@{}}
+\toprule
+Configuration & Leak & Leak $\mid$ misfiled & Held & Where it leaked \\
+\midrule
+Gateway (failover list) & 0.422 & 1.000 & 0.000 & frontier 113, EU cluster 98, network 113 \\
+\annona, before \texttt{tools.egress} & 0.804 & 1.000 & 0.065 & network 402, frontier 113 \\
+\annona, paths and patterns & 0.226 & 1.000 & 0.065 & frontier 113, network 113 \\
+\annona{} + judge, $\alpha{=}0.05$ & 0.008 & 0.035 & 0.084 & frontier 4, network 4 \\
+\annona{} + judge, $\alpha{=}0.01$ & 0.002 & 0.009 & 0.084 & frontier 1, network 1 \\
+\bottomrule
+\end{tabularx}
+\caption{E2: 1{,}500 tasks per configuration (300 documents $\times$ 5 seeds), 500 of them
+restricted, 113 misfiled (22.6\%). Leak: share of restricted documents whose canary reached a
+sink below \res. Held: share of all tasks the perimeter stopped.}
+\label{tab:leak}
+\end{table}
+
+\Cref{tab:leak} separates the three failure modes. \emph{Failover}: the gateway leaks every
+restricted document whose local GPU was down --- 98 to the EU cluster --- which \annona{}
+holds instead (the 6.5\% held). \emph{Tool egress}: before the network-tool ceiling, the
+browser carried the full text of 402 of 500 restricted documents off the machine; every
+document the run did not hold. \emph{Classification}: with paths and patterns only, \annona{}
+leaks exactly the misfiled documents (113 of 113, 22.6\%) and nothing else --- the perimeter is
+sound for the class it is given, and the class is the weak point. A content judge closes most
+of it: at $\alpha{=}0.05$ the leak is 0.8\%, with 3.5\% of misfiled documents leaking; at
+$\alpha{=}0.01$, 0.2\% and 0.9\%. Both are within the bound of \cref{prop:leak} (misfiled share
+$\times\,\alpha$: 1.1\% and 0.23\%). The cost is 1.9 points more held tasks, which are the
+misfiled documents now recognised as restricted while the local GPU is down.
+
+The judge in this experiment is simulated with a known, fixed miss rate --- it isolates the
+composition, not the quality of any particular classifier. \todo{repeat with a real judge
+(Iovis or rizzo-flow zero-shot) with its conformal threshold fitted on a calibration split.}
+
+Every ledger written by the \annona{} configurations was audited: 26{,}521 entries, 0 violations.
+
+\subsection{E3 --- Can an auditor tell a faulty perimeter from the record?}
+\label{sec:eval-compliance}
+
+We inject six faults a placement runtime could plausibly ship, run the same workload (450
+tasks per fault), and audit each ledger against the \emph{approved} policy file
+(\cref{tab:mutants}).
+
+\begin{table}[t]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l X r >{\raggedright\arraybackslash}p{3.6cm}@{}}
+\toprule
+Injected fault & What it does & Leak & Violations reported \\
+\midrule
+none & --- & 0.167 & none (2{,}626 entries) \\
+failover-widening & when nothing permitted is up, place on anything that is & 0.413 & sound 74 \\
+stale-class & place on the payload's class, forgetting what the run read & 1.000 & monotone 550 \\
+inverted-preference & take the rule's last choice & 0.167 & optimal 799 \\
+spurious-hold & hold restricted work though a permitted substrate is up & 0.167 & hold-justified 88 \\
+policy-drift & run under an edited policy, show the approved one & 0.413 & bound 1{,}800, sound 74, optimal 176 \\
+egress-ceiling-off & do not enforce the network-tool ceiling & 0.753 & egress 238 \\
+\bottomrule
+\end{tabularx}
+\caption{E3: each fault is caught by the invariant that names it; the correct runtime yields no
+violation. Leak is measured as in E2 (paths only, 20\% misfiled).}
+\label{tab:mutants}
+\end{table}
+
+Two faults do not leak --- they cost quality (\emph{inverted-preference}) or availability
+(\emph{spurious-hold}) --- and are caught anyway: the audit checks that the decision was the
+prescribed one, not only that it was safe. \emph{Stale-class}, the worst fault (every
+restricted document leaks), writes entries that are individually sound: each placement matches
+the class it records. Only the \emph{monotone} invariant, which compares a placement with what
+the run had already read, exposes it.
+
+\paragraph{Evidence independence.} In the first version of this experiment
+\emph{egress-ceiling-off} went undetected, although it leaked 75\% of restricted documents. The
+same function decided both whether a tool had a ceiling and whether to label its calls
+\texttt{network:}; disabling the ceiling also relabelled the calls \texttt{local}, erasing the
+evidence. We now label a call by what the tool \emph{is}, and the auditor derives which tools
+reach the network from the policy rather than trusting the label. The lesson generalises: the
+field that records a control must not be computed by the control.
+
+\subsection{E4 --- Tamper evidence}
+\label{sec:eval-tamper}
+
+We applied every single edit an insider could make to each entry of a real 360-entry ledger
+(\cref{tab:tamper}). Field edits, byte flips and swaps are always detected and located at the
+edited entry. Deletion is detected in 359 of 360 cases; the exception is the last line, which
+is a truncation. Truncation and a rewrite that re-hashes every later entry are never detected
+by the chain alone, as expected; with a witness holding a checkpoint every 10 entries both are
+detected in every case below the last checkpoint, and with one every 50, in 97.2\% --- the
+remainder being exactly the entries written after the last checkpoint.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Edit & Trials & Chain alone & Witness /10 & Witness /50 \\
+\midrule
+Field edit (7 fields) & 2{,}520 & 1.000 & & \\
+Byte flip & 360 & 1.000 & & \\
+Swap with next & 359 & 1.000 & & \\
+Delete & 360 & 0.997 & & \\
+Truncate tail & 359 & 0.000 & 1.000 & 0.972 \\
+Edit and re-hash suffix & 359 & 0.000 & 1.000 & 0.972 \\
+\bottomrule
+\end{tabular}
+\caption{E4: detection rate of single edits.}
+\label{tab:tamper}
+\end{table}
+
+\subsection{E5 --- AgentDojo through the unmodified loop}
+\label{sec:eval-dojo}
+
+AgentDojo~\citep{debenedetti2024agentdojo} tasks run through \annona's agent loop and perimeter
+with AgentDojo's function runtime as the tool executor. A local model (qwen2.5:14b via Ollama)
+answers on two substrates: \texttt{local} (\res) and \texttt{frontier} (\pub), the latter
+behind a wiretap. The same weights serve both, so differences come from placement and
+refusals, not model quality. An IBAN or a password in a payload is \res. We compare an
+\emph{open} configuration (everything may run on the frontier), \emph{placement}, and
+\emph{placement + egress}, where the tools that move money out are egress with ceiling \inte.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Configuration & Utility & Utility (attacked) & Attack success & User IBAN at frontier \\
+\midrule
+open & \tbd & \tbd & \tbd & \tbd \\
+placement & \tbd & \tbd & \tbd & \tbd \\
+placement + egress & \tbd & \tbd & \tbd & \tbd \\
+\bottomrule
+\end{tabular}
+\caption{E5: banking suite (v1.2), 16 user tasks $\times$ 4 injection tasks,
+\texttt{important\_instructions} attack.}
+\label{tab:dojo}
+\end{table}
+
+\todo{narrative once the run completes; then slack and workspace suites; compose with FIDES.}
+
+\subsection{E6 --- Overhead}
+\label{sec:eval-overhead}
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}l r r@{}}
+\toprule
+Operation & p50 & p95 \\
+\midrule
+Classify outbound payload, 280 chars & 41\,\textmu s & 42\,\textmu s \\
+\quad 4k chars & 96\,\textmu s & 99\,\textmu s \\
+\quad 40k chars & 0.63\,ms & 0.65\,ms \\
+\quad 200k chars (render limit) & 3.0\,ms & 3.1\,ms \\
+Clear a tool call (gate) & 0.10\,ms & 0.11\,ms \\
+Place a step & 4\,\textmu s & 4\,\textmu s \\
+Ledger append & 63\,\textmu s & 83\,\textmu s \\
+Ledger append, fsync & 79\,\textmu s & 94\,\textmu s \\
+Audit: verify chain / comply & \multicolumn{2}{r}{18 / 32\,\textmu s per entry} \\
+\bottomrule
+\end{tabular}
+\caption{E6 on an Apple M1 Pro, Python 3.12.}
+\label{tab:overhead}
+\end{table}
+
+Our design document sets the budget that decides whether a perimeter is left on: ``if the
+prefect adds 200\,ms per step it will be turned off''. The perimeter adds at most 3.3\,ms per
+step at the render limit and about 0.3\,ms on a typical 4k-character payload --- two to three
+orders of magnitude below that, and negligible next to inference. A year of decisions at
+10{,}000 steps a day (3.65 million entries) is verified and audited in about three minutes.
