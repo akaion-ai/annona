@@ -45,6 +45,7 @@ __all__ = [
     "Prefer",
     "Rule",
     "LinkPolicy",
+    "NETWORK_TOOLS",
     "SKILL_NAME",
     "SkillCatalog",
     "SkillPolicy",
@@ -280,6 +281,15 @@ class EgressPolicy:
         return klass in self.redact_allowed_for
 
 
+NETWORK_TOOLS: frozenset[str] = frozenset({"browser", "shell"})
+"""Shipped tools that can send their arguments off the machine.
+
+``browser`` fetches URLs it is given; ``shell`` can run ``curl``. Named here so
+that allowing one of them is not, silently, allowing an egress: their ceiling is
+``public`` until the policy says otherwise.
+"""
+
+
 @dataclass(frozen=True, slots=True)
 class ToolPolicy:
     """Which tools may run at all, and over which paths.
@@ -293,9 +303,27 @@ class ToolPolicy:
 
     allow: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     deny_paths: tuple[str, ...] = ()
+    egress: Mapping[str, SensitivityClass] = field(default_factory=dict)
+    """Ceiling per tool whose arguments leave the machine.
+
+    A tool that reaches the network is a substrate the policy did not declare:
+    its arguments go to whoever answers the URL or the command, and the router's
+    egress check never sees them, because it guards inference only. So such a
+    tool may run only while the run's class is at or below its ceiling. Tools in
+    :data:`NETWORK_TOOLS` get ``public`` unless the policy writes a ceiling down;
+    widening it is a decision, like widening a substrate's ``max_class``.
+    """
 
     def permits(self, tool: str) -> bool:
         return tool in self.allow
+
+    def egress_ceiling(self, tool: str) -> SensitivityClass | None:
+        """The class above which ``tool`` may not run, or ``None`` if it stays local."""
+        if tool in self.egress:
+            return self.egress[tool]
+        if tool in NETWORK_TOOLS:
+            return SensitivityClass.PUBLIC
+        return None
 
     def permits_path(self, tool: str, path: str) -> tuple[bool, str]:
         """Whether ``tool`` may touch ``path``. Deny wins over allow, always."""

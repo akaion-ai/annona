@@ -15,6 +15,12 @@ path to a tool's allow-list cannot accidentally expose ``~/.ssh``.
 **Symlinks are resolved.** A path is matched both literally and resolved, so a
 link from an allowed directory to a protected one is refused by its target.
 
+**A tool that reaches the network is an egress.** Its arguments leave the
+machine, and the router — which guards inference — never sees them. So a
+network tool runs only while the run's class is at or below the tool's ceiling
+(``tools.egress``; ``public`` for the shipped network tools), and the ledger
+records it on a ``network:<tool>`` substrate rather than ``local``.
+
 **A refusal does not taint the run.** The working set is only advanced when a
 call is *permitted*, because nothing entered the transcript otherwise. Raising
 the class on refused attempts would let a hostile plan escalate a run to
@@ -67,7 +73,11 @@ class DefaultDenyGate:
                 outcome=clearance.outcome,
                 klass=clearance.klass,
                 rule_id=clearance.rule_id,
-                substrate="local",
+                substrate=(
+                    f"network:{call.name}"
+                    if self._policy.tools.egress_ceiling(call.name) is not None
+                    else "local"
+                ),
                 payload=repr(sorted(call.arguments.items())),
                 detail={
                     "tool": call.name,
@@ -98,6 +108,20 @@ class DefaultDenyGate:
                     klass=klass,
                     reason=f"{call.name} may not touch {path}: {why}",
                     rule_id="tools.deny_paths" if "deny-list" in why else "tools.allow",
+                )
+
+        ceiling = tools.egress_ceiling(call.name)
+        if ceiling is not None:
+            carried = max(klass, self._working_set.klass)
+            if carried > ceiling:
+                return Clearance(
+                    permitted=False,
+                    klass=klass,
+                    reason=(
+                        f"{call.name} sends its arguments off this machine; the run is "
+                        f"{carried.label} and the tool's ceiling is {ceiling.label}"
+                    ),
+                    rule_id="tools.egress",
                 )
 
         return Clearance(

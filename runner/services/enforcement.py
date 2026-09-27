@@ -32,6 +32,7 @@ from runner.capability.backends import (
     OpenAICompatibleBackend,
 )
 from runner.kernel.errors import ConfigurationError
+from runner.kernel.ports import ContentModel
 from runner.kernel.types import SensitivityClass, Subject, ToolCall
 from runner.memory.index import roots
 from runner.placement.engine import PlacementDecisionEngine
@@ -355,6 +356,7 @@ class Enforcement:
         fsync: bool = True,
         secrets: Mapping[str, str] | None = None,
         subject: Subject | None = None,
+        content_model: ContentModel | None = None,
     ) -> Enforcement:
         """Assemble a perimeter for one run.
 
@@ -374,6 +376,9 @@ class Enforcement:
             subject: Who asked, as proven by an identity provider. The policy is
                 narrowed to what applies to them (``Policy.for_subject``) before
                 anything else is built, and every ledger entry carries them.
+            content_model: A learned judge of what text says (e.g. a Iovis
+                endpoint), consulted on top of the policy's paths and patterns.
+                It can only raise a class; a failure counts as restricted.
         """
         if policy is None:
             path = Path(policy_file) if policy_file else policy_path()
@@ -391,7 +396,7 @@ class Enforcement:
         who = Subject(who.id, policy.groups_of(who), who.via)
         policy = policy.for_subject(who)
 
-        classifier = PolicyClassifier(policy)
+        classifier = PolicyClassifier(policy, content_model)
         # The floor is the policy's, not this constructor's. `WorkingSet()`
         # defaults to PUBLIC, so until now a policy declaring `internal` as
         # its default class was quietly ignored and every run started at the

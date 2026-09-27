@@ -36,6 +36,7 @@ from runner.kernel.types import (
 
 __all__ = [
     "Classifier",
+    "ContentModel",
     "InferenceBackend",
     "Ledger",
     "PlacementEngine",
@@ -128,6 +129,22 @@ class Classifier(Protocol):
 
     def classify_content(self, content: str) -> SensitivityClass:
         """Class implied by the content itself — identifiers, patterns, markers."""
+        ...
+
+
+@runtime_checkable
+class ContentModel(Protocol):
+    """A learned judgment of how sensitive a piece of text is.
+
+    Consulted *in addition to* the policy's paths and patterns, never instead:
+    the classifier takes the maximum, so a model can raise a class and never
+    lower one. It may raise on any failure — the classifier turns an exception
+    into the most restrictive class, because a judge that cannot answer is not
+    evidence that the material is harmless.
+    """
+
+    def classify(self, text: str) -> SensitivityClass:
+        """Class of ``text`` by what it says, not where it came from."""
         ...
 
 
