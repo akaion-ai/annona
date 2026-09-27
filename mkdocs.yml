@@ -63,6 +63,8 @@ nav:
   - Casi d'uso (IT): casi-duso.md
   - Research:
       - research/index.md
+      - Related work: research/related-work.md
+      - Paper plan: research/paper-plan.md
   - Reference:
       - Attachments: reference/attachments.md
       - Anonymisation and its limits: reference/anonymisation.md
