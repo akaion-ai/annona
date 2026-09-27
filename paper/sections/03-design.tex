@@ -1,0 +1,123 @@
+\section{Design}
+\label{sec:design}
+
+\begin{figure}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw, rounded corners=2pt, align=center, text width=2.6cm, minimum height=3.1em, inner sep=3pt},
+  pol/.style={box, fill=red!7}, ws/.style={box, fill=orange!10}, sub/.style={box, fill=blue!6},
+  aud/.style={box, fill=green!8},
+  arr/.style={-{Stealth[length=2.2mm]}, thick}]
+  \node[box] (loop) at (0,0) {agent loop\\\scriptsize unmodified};
+  \node[pol] (gate) at (3.7,1.1) {gate\\\scriptsize default-deny, egress ceilings};
+  \node[pol] (router) at (3.7,-1.1) {router\\\scriptsize classify outbound payload};
+  \node[ws] (ws) at (7.4,0) {working set\\\scriptsize class only rises};
+  \node[pol] (engine) at (11.1,-1.1) {placement engine\\\scriptsize rule, ceiling, health};
+  \node[sub] (subs) at (11.1,1.1) {substrates\\\scriptsize local · cluster · frontier · network:tool};
+  \node[aud] (ledger) at (7.4,-2.6) {ledger\\\scriptsize policy fingerprint, decisions};
+  \node[aud] (comply) at (11.1,-2.6) {\texttt{annona comply}\\\scriptsize ledger + policy only};
+  \draw[arr] (loop) -- (gate); \draw[arr] (loop) -- (router);
+  \draw[arr] (gate) -- (ws); \draw[arr] (router) -- (ws);
+  \draw[arr] (ws) -- (engine); \draw[arr] (engine) -- (subs);
+  \draw[arr] (gate.east) to[bend left=12] (subs.west);
+  \draw[arr] (engine) -- (ledger); \draw[arr] (gate.west) -- ++(-0.3,0) |- (ledger.west);
+  \draw[arr] (ledger) -- (comply);
+\end{tikzpicture}}
+\caption{\annona. Every tool call passes the gate and every inference the router; both fold
+what they see into the working set, whose class decides placement. Every decision goes to the
+ledger, which a third party audits against the policy alone.}
+\label{fig:arch}
+\end{figure}
+
+\subsection{Policy}
+
+A policy is a YAML file that must declare \texttt{default: deny}. It defines \emph{classes},
+which assign a class to material by path globs and content patterns; \emph{substrates} with
+their ceilings; and one \emph{rule} per class. A rule lists the allowed substrates, a
+preference among them (privacy, cost, quality or latency, with the listed order as tie-break),
+and the action to take when none is available (\texttt{hold}, \texttt{queue}, or a local
+\texttt{brief}). Material that matches no class receives the policy's default class, which is
+the most restrictive one unless the operator sets it otherwise. Ceilings are declared per
+substrate rather than derived from jurisdiction, so an operator can cap an EU substrate at
+\pub.
+
+\subsection{The working set}
+
+A tool that runs locally still returns its result into the transcript, and the transcript is
+sent with the next inference. For this reason \annona{} keeps a \emph{working set} for each
+run. Its class is the maximum over everything the run has touched: paths named by permitted
+tool calls, the results of those calls, and paths and patterns found in outgoing payloads. The
+working set also keeps provenance, so that \texttt{annona why} can report which file made a run
+restricted. The class never decreases. A refused tool call does not raise it; otherwise a
+hostile plan could push any run to \res{} by requesting files it will never be allowed to read.
+
+\subsection{Placement}
+
+Before each inference, the router classifies the outgoing payload, adds the result to the
+working set, and asks the engine to place a step at the working set's class. The engine selects
+the rule for that class and keeps the allowed substrates that can hold the class, support what
+the step needs (tools, vision, context length) and are currently available. Each rejected
+substrate is recorded with the reason. The remaining candidates are ranked by the rule's
+preference. If no candidate remains, the engine applies \texttt{on\_unavailable}; none of its
+options adds substrates outside the rule's list. A held step raises an error, the loop returns
+the partial result, and the hold is recorded in the ledger like any other outcome.
+
+\subsection{Tools that reach the network}
+
+A gate checks each tool call before it runs. Tools not named in the policy are refused, and a
+named tool may only access paths on its allow-list. Deny-lists are evaluated first and
+symbolic links are resolved. Our original gate had a gap common to perimeters that only check
+inference: the router never saw the arguments of a browser or shell call, so a restricted run
+could pass a client file to \texttt{browser} inside a URL. A tool that reaches the network now
+has a ceiling. For the shipped browser and shell tools the ceiling is \pub{} unless the policy
+raises it. The ceiling is compared with the class of the run, not of the individual call,
+because the model may have encoded the material. The ledger records such calls on a
+\texttt{network:<tool>} substrate. This label depends only on whether the tool reaches the
+network, not on the ceiling applied to it; \cref{sec:eval-compliance} shows why the two must
+be kept separate.
+
+\subsection{Content classification}
+
+Path and pattern rules capture where material is stored and which identifiers it contains. They
+do not recognise an offer without keywords saved in \texttt{Downloads/}. The classifier
+therefore accepts an optional \emph{content model}. It is called wherever content is
+classified (a single function used by the router, the gate and result tracking), it can only
+raise the class, and an error from it is treated as \res. The included adapter uses the
+Jev-compatible \texttt{/v1/systemone} protocol of rizzo-flow~\citep{rizzoflow}. It requests the
+probability of each class and compares the \emph{strict mass} $p(\res) + p(\text{cannot tell})$
+with a threshold $\tau_\alpha$, set to the $\lfloor \alpha(n+1) \rfloor$-th smallest strict
+mass among $n$ labelled restricted texts.
+
+\subsection{Briefs and redaction}
+
+When no available substrate can hold a step's class, the policy may allow a local model to
+write a short summary (a \emph{brief}) that is classified again before it can be sent, or may
+allow a local redactor (rizzo-pii~\citep{rizzopii}) to replace identifiers while keeping the
+mapping on the machine. Material listed under \texttt{sealed} is never summarised or redacted,
+because for some documents the sensitive part is the content itself rather than the
+identifiers. Both mechanisms are forms of declassification. They are disabled by default for
+\res, and we do not claim that they are sound (\cref{sec:discussion}).
+
+\subsection{Ledger and audit}
+
+Each decision is appended to a hash-chained JSON Lines ledger, which stores a digest of the
+payload instead of the payload. Each run starts with the SHA-256 fingerprint of the parsed
+policy; comments and key order do not affect it, while any change to a rule does. Placement
+entries include the class, the rule, the chosen substrate, the remaining candidates and every
+rejection. Tool-call entries include the class of the run. \texttt{annona verify} checks the
+chain, and \texttt{annona comply} checks the following invariants against the policy file:
+
+\begin{description}[leftmargin=2em, font=\normalfont\ttfamily]
+  \item[bound] every run records the fingerprint of this policy;
+  \item[sound] every permitted placement uses a substrate that the rule allows and that can hold the class;
+  \item[optimal] the chosen substrate is the one ranked first by the rule's preference among the recorded candidates;
+  \item[hold-justified] every hold has no recorded candidate;
+  \item[monotone] no inference is placed below a class the run has already reached;
+  \item[egress] every network tool call happened within its ceiling. The auditor determines
+    which tools reach the network from the policy, not from the label written by the daemon.
+\end{description}
+
+Checkpoints of the ledger head, published to a witness that the writer cannot modify, detect
+truncation and rewritten suffixes before the last checkpoint, as in Certificate Transparency.

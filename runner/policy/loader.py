@@ -494,11 +494,17 @@ def _parse_tools(raw: Mapping[str, Any]) -> ToolPolicy:
         str(tool): tuple(str(p) for p in _require_sequence(paths, f"tools.allow.{tool}"))
         for tool, paths in allow_raw.items()
     }
+    egress_raw = _require_mapping(raw.get("egress"), "tools.egress")
+    try:
+        egress = {str(tool): SensitivityClass.parse(klass) for tool, klass in egress_raw.items()}
+    except ValueError as exc:
+        raise PolicyError(f"tools.egress: {exc}") from exc
     return ToolPolicy(
         allow=allow,
         deny_paths=tuple(
             str(p) for p in _require_sequence(raw.get("deny_paths"), "tools.deny_paths")
         ),
+        egress=egress,
     )
 
 

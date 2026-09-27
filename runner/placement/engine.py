@@ -27,33 +27,12 @@ quality. It may not cost jurisdiction.**
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from runner.kernel.types import Placement, Requirement, SensitivityClass
 from runner.placement.registry import SubstrateRegistry
 from runner.policy.models import Policy, Rule, Substrate
+from runner.policy.ranking import rank_key as _rank_key
 
 __all__ = ["PlacementDecisionEngine"]
-
-
-def _rank_key(prefer: str, order: dict[str, int]) -> Callable[[Substrate], tuple[float, ...]]:
-    """Sort key for a preference, with the rule's order as the tie-break.
-
-    The tie-break is not cosmetic: without it, two substrates with identical
-    cost would be chosen by dictionary order, and the same policy would place
-    the same step differently across processes. Reproducibility is a property an
-    auditor tests.
-    """
-    if prefer == "cost":
-        return lambda s: (s.cost_per_mtok, float(order.get(s.id, 999)))
-    if prefer == "quality":
-        return lambda s: (-float(s.quality), float(order.get(s.id, 999)))
-    if prefer == "latency":
-        # Latency is observed per call, not declared; until there is a
-        # measurement, distance is the honest proxy — a nearer substrate is
-        # rarely slower, and pretending to know better would be fiction.
-        return lambda s: (float(s.distance), float(order.get(s.id, 999)))
-    return lambda s: (float(s.distance), s.cost_per_mtok, float(order.get(s.id, 999)))
 
 
 class PlacementDecisionEngine:

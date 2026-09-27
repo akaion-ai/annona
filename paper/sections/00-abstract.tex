@@ -1,0 +1,26 @@
+\begin{abstract}
+Organisations that deploy LLM agents must decide where each step runs: on their own GPUs, on a
+rented cluster, or at a frontier API. In current deployments this is a configuration setting
+chosen once. Information-flow defences for agents control which data reaches which tool and
+assume a single model provider. Privacy-aware routers choose between a local and a cloud model
+for each prompt, using learned gates, and do not enforce a policy. We present \annona, an
+open-source execution kernel in which the execution substrate of every agent step (each
+inference and each tool call) is decided by a default-deny policy over a sensitivity class
+that can only increase during a run. When no permitted substrate is available, the step is
+held instead of being sent to a less trusted one. Tools that reach the network are treated as
+substrates with their own class ceiling. Every decision is appended to a hash-chained ledger
+that starts with a fingerprint of the policy, and an auditor can re-derive each placement from
+the ledger and the policy file alone. We show that adding a calibrated content classifier with
+a conformal miss rate $\alpha$ bounds the leak rate of restricted material by the fraction of
+misfiled documents times $\alpha$. We measure leaks with canaries that no policy lists. Over
+1{,}500 tasks with an adversarial agent, a gateway with failover leaks 42.2\% of restricted
+documents, \annona{} with path rules only leaks 22.6\% (exactly the misfiled share), and
+\annona{} with a classifier at $\alpha{=}0.05$ and $0.01$ leaks 0.8\% and 0.2\%. Before a fix
+described in this paper, a browser tool let 80.4\% of restricted documents out through its
+arguments. The auditor detects each of six injected placement faults and reports no violation
+on 26{,}521 entries from correct runs. With a real zero-shot classifier, the bound holds at
+$\alpha{=}0.02$ but 64\% of non-restricted documents are kept local. The perimeter adds
+0.1 to 3\,ms per step. On AgentDojo with a local 3B model, placement removes the user's account
+data from all frontier requests (73 of 182 to 0) with no measurable loss of utility; with a
+14B model, egress ceilings block every injected goal (8 of 16 to 0) but halve benign utility.
+\end{abstract}
