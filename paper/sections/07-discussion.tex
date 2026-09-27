@@ -37,4 +37,18 @@ increases, holds steps that cannot be placed, treats network tools as substrates
 each decision so that it can be checked using only the ledger and the policy. In our
 measurements with canaries that no policy lists, the perimeter leaks only the documents its
 classifier misses, and a calibrated classifier turns that miss rate into a parameter chosen by
-the operator. The system, the evaluation harness and all results are released as open source.
+the operator.
+
+We see \annona{} as the kernel of a company operating system: the part of an agent deployment
+that remains with the organisation after the people who built its workflows have left. In
+practice, agents are often configured by an external consultant or integrator. Prompts, tools
+and models change over time, and the consultant eventually leaves. The policy, written by the
+organisation in a file it can read, the ledger of every decision taken under it, and the kernel
+that enforces the first and writes the second are what stay in the company. They allow the
+organisation to answer later, and without the consultant, which data went where and under which
+rule.
+
+This also determines the division of work between agents and people. Agents plan and execute
+steps within the limits the kernel enforces. People write the policy, decide on the steps that
+the kernel holds, and read the ledger. In short: agents orchestrate and execute; people decide.
+The system, the evaluation harness and all results are released as open source.
