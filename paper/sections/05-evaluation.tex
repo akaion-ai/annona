@@ -52,8 +52,7 @@ $\times\,\alpha$: 1.1\% and 0.23\%). The cost is 1.9 points more held tasks, whi
 misfiled documents now recognised as restricted while the local GPU is down.
 
 The judge in this experiment is simulated with a known, fixed miss rate --- it isolates the
-composition, not the quality of any particular classifier. \todo{repeat with a real judge
-(Iovis or rizzo-flow zero-shot) with its conformal threshold fitted on a calibration split.}
+composition, not the quality of any particular classifier; E7 measures a real one.
 
 Every ledger written by the \annona{} configurations was audited: 26{,}521 entries, 0 violations.
 
@@ -156,6 +155,42 @@ placement + egress & \tbd & \tbd & \tbd & \tbd \\
 \end{table}
 
 \todo{narrative once the run completes; then slack and workspace suites; compose with FIDES.}
+
+\subsection{E7 --- A real judge: what the bound costs}
+\label{sec:eval-judge}
+
+E2 isolates the composition with a judge of known miss rate. With a real one the bound holds
+the same way, and the question becomes its price. \Cref{tab:judge} reports split-conformal
+thresholds for rizzo-flow's base judge~\citep{rizzoflow} (Spark-X2.5-4B, Q8\_0, zero-shot),
+fitted on 72 restricted documents of a calibration split and tested on 90 held-out restricted
+documents of public contracts and synthetic business documents. These numbers come from the
+evaluation of the companion sensitivity model, \emph{Iovis}, whose training is in progress.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}r r r r@{}}
+\toprule
+$\alpha$ & $\tau_\alpha$ & Missed restricted (test, $n{=}90$) & Non-restricted flagged \\
+\midrule
+0.01 & --- & \multicolumn{2}{l}{72 calibration documents cannot support it} \\
+0.02 & 0.645 & 0.011 & 0.643 \\
+0.05 & 0.657 & 0.056 & 0.557 \\
+0.10 & 0.713 & 0.133 & 0.350 \\
+\bottomrule
+\end{tabular}
+\caption{E7: conformal thresholds for a real, uncalibrated-by-training judge. Misses are
+within binomial noise of $\alpha$ at $n{=}90$ (the guarantee is marginal over calibration
+draws); the flag rate is the price.}
+\label{tab:judge}
+\end{table}
+
+The guarantee is honest and, for a zero-shot judge, expensive: to miss at most 2\% of
+restricted documents it raises 64\% of the others, which the perimeter then keeps local. In
+the E2 deployment that would bound the leak at $0.226 \times 0.02 \approx 0.5\%$ while
+moving most public work off the frontier. A judge specialised for commercial sensitivity has
+one job in this system: to buy the same $\alpha$ with a lower flag rate. With too few
+calibration documents no threshold can promise a small $\alpha$; the adapter refuses to
+return one rather than return one that cannot keep it.
 
 \subsection{E6 --- Overhead}
 \label{sec:eval-overhead}
