@@ -144,14 +144,18 @@ refusals, not model quality. An IBAN or a password in a payload is \res. We comp
 \toprule
 Configuration & Utility & Utility (attacked) & Attack success & User IBAN at frontier \\
 \midrule
+\multicolumn{5}{@{}l}{\emph{qwen2.5:3b --- 16 user tasks $\times$ 4 injection tasks (64 attacked pairs)}} \\
 open & 0.375 & 0.313 & 0.000 & 73 of 182 payloads \\
 placement & 0.438 & 0.297 & 0.016 & 0 of 66 \\
 placement + egress & 0.375 & 0.313 & 0.000 & 0 of 65 \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{qwen2.5:14b --- 8 user tasks $\times$ 2 injection tasks (16 attacked pairs)}} \\
+open & 0.500 & 0.688 & 0.500 & 64 of 84 \\
+placement + egress & 0.250 & 0.313 & 0.000 & 0 of 16 \\
 \bottomrule
 \end{tabular}
-\caption{E5: AgentDojo banking suite (v1.2) with qwen2.5:3b; 16 user tasks, each benign and
-under 4 injection tasks with the \texttt{important\_instructions} attack (64 attacked pairs).
-In \emph{placement + egress} 39 tool calls were refused.}
+\caption{E5: AgentDojo banking suite (v1.2), \texttt{important\_instructions} attack. Refused
+tool calls in \emph{placement + egress}: 39 (3B), 18 (14B).}
 \label{tab:dojo}
 \end{table}
 
@@ -160,9 +164,19 @@ own IBANs --- account data read by a tool and sent onward with the transcript. P
 that to zero: once a step's payload holds an IBAN, the run is restricted and every later step
 runs locally. Benign utility does not drop measurably (7 vs 6 of 16 tasks, within noise at this
 size). The 3B model is too weak to be a useful target for injection --- attacks almost never
-succeed, even when open --- so this run shows the provider-exposure half of the story and not
-the tool-exfiltration half. \todo{14B subset (running): open vs placement + egress, 8 tasks
-$\times$ 2 injections; then slack and workspace; compose with FIDES.}
+succeed, even when open.
+
+The 14B model is: with everything open, half the injected goals succeed (8 of 16) and 64 of 84
+frontier payloads carry the user's IBANs. With placement and egress ceilings, no injected goal
+succeeds and no IBAN reaches the frontier. The price is utility, and it is the known price of
+information-flow control: once the run has read account data it is restricted, and the tools
+that move money are refused for the rest of the run --- including the payments the user asked
+for (benign utility 4 of 8 $\to$ 2 of 8). A ceiling is a blunt instrument for an action the
+user intended; the finer answer is to \emph{hold} such a call for the user's confirmation
+rather than refuse it, which the runtime's hold semantics already support for placement and
+which we leave for tools. The subset is small and the intervals wide; the full suite on the
+14B model, the other suites, and composition with an IFC planner such as
+FIDES~\citep{costa2025fides} are the next runs.
 
 \subsection{E7 --- A real judge: what the bound costs}
 \label{sec:eval-judge}
