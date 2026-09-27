@@ -131,7 +131,7 @@ Edit and re-hash suffix & 359 & 0.000 & 1.000 & 0.972 \\
 \label{sec:eval-dojo}
 
 AgentDojo~\citep{debenedetti2024agentdojo} tasks run through \annona's agent loop and perimeter
-with AgentDojo's function runtime as the tool executor. A local model (qwen2.5:14b via Ollama)
+with AgentDojo's function runtime as the tool executor. A local model (qwen2.5 via Ollama)
 answers on two substrates: \texttt{local} (\res) and \texttt{frontier} (\pub), the latter
 behind a wiretap. The same weights serve both, so differences come from placement and
 refusals, not model quality. An IBAN or a password in a payload is \res. We compare an
@@ -144,17 +144,25 @@ refusals, not model quality. An IBAN or a password in a payload is \res. We comp
 \toprule
 Configuration & Utility & Utility (attacked) & Attack success & User IBAN at frontier \\
 \midrule
-open & \tbd & \tbd & \tbd & \tbd \\
-placement & \tbd & \tbd & \tbd & \tbd \\
-placement + egress & \tbd & \tbd & \tbd & \tbd \\
+open & 0.375 & 0.313 & 0.000 & 73 of 182 payloads \\
+placement & 0.438 & 0.297 & 0.016 & 0 of 66 \\
+placement + egress & 0.375 & 0.313 & 0.000 & 0 of 65 \\
 \bottomrule
 \end{tabular}
-\caption{E5: banking suite (v1.2), 16 user tasks $\times$ 4 injection tasks,
-\texttt{important\_instructions} attack.}
+\caption{E5: AgentDojo banking suite (v1.2) with qwen2.5:3b; 16 user tasks, each benign and
+under 4 injection tasks with the \texttt{important\_instructions} attack (64 attacked pairs).
+In \emph{placement + egress} 39 tool calls were refused.}
 \label{tab:dojo}
 \end{table}
 
-\todo{narrative once the run completes; then slack and workspace suites; compose with FIDES.}
+With everything allowed on the frontier, 73 of the 182 payloads it received carried the user's
+own IBANs --- account data read by a tool and sent onward with the transcript. Placement brings
+that to zero: once a step's payload holds an IBAN, the run is restricted and every later step
+runs locally. Benign utility does not drop measurably (7 vs 6 of 16 tasks, within noise at this
+size). The 3B model is too weak to be a useful target for injection --- attacks almost never
+succeed, even when open --- so this run shows the provider-exposure half of the story and not
+the tool-exfiltration half. \todo{14B subset (running): open vs placement + egress, 8 tasks
+$\times$ 2 injections; then slack and workspace; compose with FIDES.}
 
 \subsection{E7 --- A real judge: what the bound costs}
 \label{sec:eval-judge}
