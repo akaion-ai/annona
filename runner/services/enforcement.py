@@ -39,6 +39,7 @@ from runner.placement.engine import PlacementDecisionEngine
 from runner.placement.registry import SubstrateRegistry, http_prober
 from runner.placement.router import RoutingBackend
 from runner.policy.classifier import PolicyClassifier, WorkingSet
+from runner.policy.fingerprint import policy_fingerprint
 from runner.policy.gate import DefaultDenyGate
 from runner.policy.loader import default_policy, load_policy
 from runner.policy.models import Policy, Substrate
@@ -392,6 +393,7 @@ class Enforcement:
                     "only the local runtime. Run `annona init` to write one."
                 )
 
+        fingerprint = policy_fingerprint(policy)
         who = subject or Subject()
         who = Subject(who.id, policy.groups_of(who), who.via)
         policy = policy.for_subject(who)
@@ -413,6 +415,15 @@ class Enforcement:
         if ledger_path is None:
             ledger_path = policy_path().parent / "ledger.jsonl"
         ledger = Ledger(ledger_path, run_id=run_id, fsync=fsync, subject=who)
+        # The first line of every run names the policy it runs under, so an
+        # auditor can re-derive each decision below from the ledger and the
+        # policy file alone (`annona audit --compliance`).
+        ledger.record(
+            "policy",
+            outcome="cleared",
+            klass=working_set.klass,
+            detail={"fingerprint": fingerprint},
+        )
 
         if backends is None:
             built: dict[str, Any] = {}

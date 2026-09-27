@@ -317,6 +317,15 @@ class ToolPolicy:
     def permits(self, tool: str) -> bool:
         return tool in self.allow
 
+    def reaches_network(self, tool: str) -> bool:
+        """Whether ``tool`` sends its arguments off the machine.
+
+        Kept apart from the ceiling on purpose: the ledger labels a call by what
+        the tool *is*, not by the limit applied to it, so a defect in the limit
+        cannot also erase the evidence that the limit mattered.
+        """
+        return tool in self.egress or tool in NETWORK_TOOLS
+
     def egress_ceiling(self, tool: str) -> SensitivityClass | None:
         """The class above which ``tool`` may not run, or ``None`` if it stays local."""
         if tool in self.egress:

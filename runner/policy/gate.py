@@ -75,13 +75,14 @@ class DefaultDenyGate:
                 rule_id=clearance.rule_id,
                 substrate=(
                     f"network:{call.name}"
-                    if self._policy.tools.egress_ceiling(call.name) is not None
+                    if self._policy.tools.reaches_network(call.name)
                     else "local"
                 ),
                 payload=repr(sorted(call.arguments.items())),
                 detail={
                     "tool": call.name,
                     "reason": clearance.reason,
+                    "run_class": self._working_set.klass.label,
                     "paths": list(path_like_values(call.arguments)),
                 },
             )
