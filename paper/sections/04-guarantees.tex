@@ -1,8 +1,8 @@
 \section{Guarantees}
 \label{sec:guarantees}
 
-We state the properties the evaluation tests. The arguments are short because the mechanisms
-are; their value is in making explicit which assumption each property rests on.
+This section states the properties tested in \cref{sec:evaluation}. The arguments are short,
+and their main purpose is to make explicit the assumption each property depends on.
 
 \begin{proposition}[Soundness given a correct class]
 \label{prop:sound}
@@ -16,14 +16,14 @@ least the true class of every source touched up to step $t$; every payload is de
 those sources, so its true class is at most $w_t$. An inference is placed only on a substrate
 $s$ with $\maxc(s) \succeq w_t$ (the engine's ceiling check), or held. A network tool runs
 only if $w_t \preceq$ its ceiling. A brief or redaction crosses only after reclassification;
-its soundness is an assumption we do not discharge here.
+we do not prove the soundness of these two mechanisms.
 \end{proof}
 
 \begin{proposition}[Composed leak bound]
 \label{prop:leak}
-Let $M$ be the event that a restricted document is \emph{misfiled} --- its paths and patterns
-give a class below \res --- and let the content judge miss a restricted text with probability
-at most $\alpha$ (conformal threshold, exchangeable calibration). If the judge's miss is
+Let $M$ be the event that a restricted document is \emph{misfiled}, meaning that its path and
+pattern rules give a class below \res, and let the content classifier miss a restricted text with probability
+at most $\alpha$ (conformal threshold, exchangeable calibration). If the classifier's miss is
 independent of $M$, then under the hypotheses of \cref{prop:sound} for every other source,
 \[
   \Pr[\text{a restricted document reaches a substrate below \res}] \;\le\; \Pr[M]\cdot\alpha .
@@ -31,14 +31,14 @@ independent of $M$, then under the hypotheses of \cref{prop:sound} for every oth
 \end{proposition}
 
 \begin{proof}[Argument]
-A document can leak only if its class is underestimated (\cref{prop:sound}). The class is
-the maximum of the path/pattern class and the judge's, so it is underestimated only if both
-are: $\Pr[M \wedge \text{miss}] = \Pr[M]\Pr[\text{miss}] \le \Pr[M]\,\alpha$.
+By \cref{prop:sound}, a document can leak only if its class is underestimated. The class is
+the maximum of the class from path and pattern rules and the class from the classifier, so it
+is underestimated only if both are: $\Pr[M \wedge \text{miss}] = \Pr[M]\Pr[\text{miss}] \le \Pr[M]\,\alpha$.
 \end{proof}
 
-The independence assumption is plausible when misfiling is about \emph{where} a file is saved
-and the judge sees only \emph{what} it says; it fails if the same property that makes a
-document easy to misfile also makes it hard to judge. \Cref{sec:eval-leak} measures both sides
+The independence assumption is reasonable when misfiling depends on where a file is saved and
+the classifier only sees its content. It does not hold if the property that makes a document
+likely to be misfiled also makes it hard to classify. \Cref{sec:eval-leak} measures both sides
 of the inequality.
 
 \begin{proposition}[What the audit establishes]
@@ -50,8 +50,9 @@ the recorded candidates, every hold had no candidate, no inference was placed be
 the run had reached, and no network tool ran above its ceiling.
 \end{proposition}
 
-Each invariant is a predicate over one entry, the policy, and a per-run running maximum, so the
-audit is linear in the ledger. What it cannot establish is that the entries are true: a
-component that both misbehaves and records consistently passes. This is the gap attestation of
-the writer addresses (\cref{sec:discussion}), and the reason we design labels so that a defect
-in a control does not also rewrite the evidence of that control.
+Each invariant is a predicate over one entry, the policy and a running maximum per run, so the
+audit takes time linear in the size of the ledger. The audit cannot establish that the entries
+are true: a component that misbehaves and records its decisions consistently will pass. Closing
+this gap requires attestation of the writer (\cref{sec:discussion}). It is also why we compute
+ledger labels independently of the controls they describe, so that a defect in a control does
+not also alter the record of that control.

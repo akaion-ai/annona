@@ -1,37 +1,38 @@
 \section{Setting and threat model}
 \label{sec:threat}
 
-\paragraph{Setting.} A daemon runs where the organisation's data lives. It executes agent runs:
-a loop of inference steps and tool calls over a growing transcript. It knows a set of
-\emph{substrates} --- places a step can run --- each with a jurisdiction, a cost, a quality
-and a \emph{ceiling} $\maxc(s) \in \{\pub \prec \inte \prec \res\}$: the most sensitive class
-it may see. A typical deployment has an on-premises GPU (\res), a private EU cluster (\inte)
-and a frontier API (\pub).
+\paragraph{Setting.} A daemon runs on the machine that holds the organisation's data and
+executes agent runs, each a loop of inference steps and tool calls over a growing transcript.
+It knows a set of substrates where steps can run. Each substrate has a jurisdiction, a cost, a
+quality score and a ceiling $\maxc(s) \in \{\pub \prec \inte \prec \res\}$, the most sensitive
+class it may receive. A typical deployment has an on-premises GPU (\res), a private EU cluster
+(\inte) and a frontier API (\pub).
 
-\paragraph{Adversaries.}
+\paragraph{Adversaries.} We consider three.
 \begin{itemize}
-  \item \textbf{The substrate.} A provider, or anyone who can read what it receives, learns
-    whatever is sent to it. This is the confidentiality goal: material of class $c$ reaches
-    no substrate with ceiling below $c$.
-  \item \textbf{The plan.} The agent's model may be steered by injected content or be simply
-    wrong: it may request any tool with any argument, in any order, including tools that
-    reach the network with the material in their arguments. We model it as fully adversarial
-    within the tools it is offered.
-  \item \textbf{A faulty or edited record.} The runtime may have bugs, and someone with write
-    access to the ledger may edit, delete, reorder, truncate or rewrite it. The auditor wants
-    to detect both from the files alone.
+  \item \textbf{The substrate.} A provider, or anyone with access to what it receives, learns
+    everything sent to it. The confidentiality goal is that material of class $c$ reaches no
+    substrate whose ceiling is below $c$.
+  \item \textbf{The plan.} The agent's model can be manipulated by injected content or can
+    simply make mistakes. It may request any available tool with any arguments in any order,
+    including network tools with sensitive material in their arguments. We treat it as
+    adversarial within the set of tools it is given.
+  \item \textbf{A faulty or modified record.} The runtime may contain bugs, and a person with
+    write access to the ledger may edit, delete, reorder, truncate or rewrite entries. The
+    auditor should detect both cases from the files.
 \end{itemize}
 
-\paragraph{Trusted.} The policy's author; the local substrate and the host; the tools' own code
-(a tool that exfiltrates through a channel it does not declare is out of scope); and, for the
-evidence, a ledger writer that records each decision truthfully --- a consistent lie passes
-every check we propose, and removing that assumption requires attesting the writer's code.
+\paragraph{Trust assumptions.} We trust the author of the policy, the local substrate and host,
+and the code of the tools; a tool that sends data through an undeclared channel is out of
+scope. For the audit, we assume the ledger writer records each decision truthfully. A writer
+that misbehaves and records consistently would pass every check we propose, and removing this
+assumption requires attestation of the writer.
 
-\paragraph{Not trusted to be correct, but bounded.} The classifier. Paths and patterns miss
-material that lives where the policy does not expect it; a content model misses with some rate.
-The analysis makes that rate the only term in the leak bound.
+The classifier is not assumed to be correct. Path and pattern rules miss material stored in
+unexpected places, and a content model has a miss rate. The analysis in
+\cref{sec:guarantees} makes that miss rate the only term in the leak bound.
 
 \begin{definition}[Placement safety]
 A run is \emph{placement-safe} if no substrate $s$ receives, in a prompt, a tool argument or a
-brief, any material derived from a source of true class $c$ with $c \succ \maxc(s)$.
+brief, material derived from a source of true class $c$ with $c \succ \maxc(s)$.
 \end{definition}
