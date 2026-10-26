@@ -25,6 +25,7 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from runner.kernel.ports import ContentModel
 from runner.kernel.types import SensitivityClass, ToolCall, ToolResult
 from runner.policy.models import Policy
 
@@ -95,10 +96,19 @@ def path_like_values(arguments: Mapping[str, Any]) -> tuple[str, ...]:
 
 
 class PolicyClassifier:
-    """Classifies material against a policy. Satisfies ``kernel.ports.Classifier``."""
+    """Classifies material against a policy. Satisfies ``kernel.ports.Classifier``.
 
-    def __init__(self, policy: Policy) -> None:
+    ``model`` is an optional :class:`~runner.kernel.ports.ContentModel` — a
+    learned judge of what text *says*. Globs and regexes see where material lives
+    and which identifiers it carries; they are blind to an offer with no keyword
+    in it. The model is consulted wherever content is, and only ever raises the
+    class: every public method below reaches content through
+    :meth:`classify_content`, so there is one place where it is asked.
+    """
+
+    def __init__(self, policy: Policy, model: ContentModel | None = None) -> None:
         self._policy = policy
+        self._model = model
 
     @property
     def default_class(self) -> SensitivityClass:
@@ -125,7 +135,14 @@ class PolicyClassifier:
         if not content:
             return SensitivityClass.PUBLIC
         hit = self._policy.class_for_content(content)
-        return hit if hit is not None else SensitivityClass.PUBLIC
+        klass = hit if hit is not None else SensitivityClass.PUBLIC
+        if self._model is None or klass is SensitivityClass.RESTRICTED:
+            return klass
+        try:
+            judged = self._model.classify(content)
+        except Exception:  # noqa: BLE001 - any failure fails upward
+            return SensitivityClass.RESTRICTED
+        return max(klass, judged)
 
     def classify_text(self, text: str) -> SensitivityClass:
         """Class of a whole payload: what it contains *and* what it points at.

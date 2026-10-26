@@ -1,0 +1,79 @@
+% Annona — Akaion AI Lab.
+% Build: `make paper` from the repository root (tectonic).
+%
+% Every number traces to experiments/results/*.json, produced by a script in
+% experiments/ (see experiments/README.md). Numbers not yet measured are \tbd.
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{iftex}
+\ifXeTeX
+  \usepackage{fontspec}
+\else
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{lmodern}
+\fi
+\usepackage{textcomp}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,tabularx,multirow,array}
+\usepackage{graphicx}
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{caption,subcaption}
+\usepackage{microtype}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\usepackage{xurl}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+
+\setlist{itemsep=2pt,topsep=4pt}
+
+\newif\ifdraft \drafttrue
+\ifdraft
+  \newcommand{\tbd}{\textcolor{red!70!black}{\textbf{TBD}}}
+  \newcommand{\todo}[1]{\textcolor{orange!80!black}{[\textsc{todo}: #1]}}
+\else
+  \newcommand{\tbd}{\errmessage{A TBD number is left in the paper}}
+  \newcommand{\todo}[1]{\errmessage{A TODO is left in the paper: #1}}
+\fi
+
+\newcommand{\annona}{\textsc{Annona}}
+\newcommand{\pub}{\textsf{public}}
+\newcommand{\inte}{\textsf{internal}}
+\newcommand{\res}{\textsf{restricted}}
+\newcommand{\cls}{\operatorname{cls}}
+\newcommand{\maxc}{\operatorname{max\_class}}
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+
+\title{Where Every Step Runs: Enforced, Auditable Placement\\for LLM Agents}
+
+\author{
+  Matteo Ballabio \qquad Luca Cappellini\\[4pt]
+  \normalsize Akaion AI Lab\\
+  \normalsize \texttt{\{matteoballabio, lucaalessandro.cappellini\}@akaion.com}
+}
+\date{Draft --- \today}
+
+\begin{document}
+\maketitle
+
+\input{sections/00-abstract}
+\input{sections/01-introduction}
+\input{sections/02-threat-model}
+\input{sections/03-design}
+\input{sections/04-guarantees}
+\input{sections/05-evaluation}
+\input{sections/06-related}
+\input{sections/07-discussion}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}

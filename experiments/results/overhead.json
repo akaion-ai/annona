@@ -1,0 +1,70 @@
+{
+  "experiment": "E6 perimeter overhead",
+  "machine": "arm64 arm 3.12.13",
+  "repeats": 400,
+  "results": {
+    "classify_text": {
+      "280": {
+        "p50_us": 40.5,
+        "p95_us": 42.2
+      },
+      "4000": {
+        "p50_us": 95.8,
+        "p95_us": 98.5
+      },
+      "40000": {
+        "p50_us": 634.6,
+        "p95_us": 646.0
+      },
+      "200000": {
+        "p50_us": 3024.4,
+        "p95_us": 3052.9
+      }
+    },
+    "gate_clear": {
+      "280": {
+        "p50_us": 101.0,
+        "p95_us": 105.6
+      },
+      "4000": {
+        "p50_us": 101.2,
+        "p95_us": 106.6
+      },
+      "40000": {
+        "p50_us": 102.5,
+        "p95_us": 107.8
+      },
+      "200000": {
+        "p50_us": 106.1,
+        "p95_us": 112.0
+      }
+    },
+    "place": {
+      "public": {
+        "p50_us": 3.8,
+        "p95_us": 3.9
+      },
+      "internal": {
+        "p50_us": 4.1,
+        "p95_us": 4.2
+      },
+      "restricted": {
+        "p50_us": 3.8,
+        "p95_us": 3.9
+      }
+    },
+    "ledger_append": {
+      "p50_us": 63.3,
+      "p95_us": 83.2
+    },
+    "ledger_append_fsync": {
+      "p50_us": 78.9,
+      "p95_us": 93.7
+    },
+    "audit": {
+      "entries": 1800,
+      "verify_us_per_entry": 17.8,
+      "comply_us_per_entry": 32.3
+    }
+  }
+}

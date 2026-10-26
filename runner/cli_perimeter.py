@@ -527,6 +527,32 @@ def pair(
     )
 
 
+def comply(
+    ledger: Path = typer.Option(None, "--ledger", "-l", help="Ledger file"),
+    policy: Path = typer.Option(None, "--policy", "-p", help="The approved policy file"),
+    limit: int = typer.Option(20, "--limit", help="Violations to list"),
+):
+    """⚖️  Re-derive every decision from the ledger and the policy alone.
+
+    Checks that each run names this policy, that every placement was permitted
+    and was the one the rule prescribes, that holds were necessary, that no
+    inference was placed below the run's class, and that network tools stayed
+    within their ceiling. Needs nothing but the two files.
+    """
+    from runner.audit.compliance import audit_compliance
+
+    approved, policy_file = _load(policy)
+    target = Path(ledger) if ledger else _ledger_path()
+    report = audit_compliance(target, approved)
+    console.print(f"\n⚖️  [bold]{report.entries} entries[/bold] against {policy_file}")
+    console.print(report.summary())
+    for violation in report.violations[:limit]:
+        console.print(f"   [red]{violation}[/red]")
+    if not report.ok:
+        raise typer.Exit(1)
+    console.print("✅ [green]every decision is one the policy prescribes[/green]")
+
+
 def register(app: typer.Typer) -> None:
     """Attach the perimeter commands to the main CLI.
 
@@ -540,4 +566,5 @@ def register(app: typer.Typer) -> None:
     app.command("why")(why)
     app.command("verify")(verify)
     app.command("audit")(audit)
+    app.command("comply")(comply)
     app.command("pair")(pair)

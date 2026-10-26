@@ -326,7 +326,7 @@ def test_for_run_narrows_the_policy_and_stamps_the_ledger(tmp_path):
     )
     assert enforcement.policy.rule_for(SensitivityClass.RESTRICTED).id == "R-sales"
     enforcement.ledger.record("run", outcome="started", klass=SensitivityClass.PUBLIC)
-    entry = json.loads((tmp_path / "ledger.jsonl").read_text())
+    entry = json.loads((tmp_path / "ledger.jsonl").read_text().splitlines()[-1])
     assert (entry["subject"], entry["groups"]) == ("anna@acme.example", ["sales"])
 
 

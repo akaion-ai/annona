@@ -1,0 +1,97 @@
+{
+  "experiment": "E2 restricted egress, undeclared canaries",
+  "params": {
+    "n": 300,
+    "seeds": 5,
+    "misfile": 0.2,
+    "local_down": 0.25
+  },
+  "bound": {
+    "annona-paths": 0.2,
+    "annona+judge(0.05)": 0.010000000000000002,
+    "annona+judge(0.01)": 0.002
+  },
+  "results": {
+    "gateway": {
+      "tasks": 1500,
+      "restricted": 500,
+      "misfiled": 113,
+      "leak_rate": 0.422,
+      "leak_rate_misfiled": 1.0,
+      "sinks": {
+        "eu-cluster": 98,
+        "frontier": 113,
+        "network": 113
+      },
+      "completion_rate": 1.0,
+      "hold_rate": 0.0,
+      "ledger_entries_audited": 0,
+      "compliance_violations": 0,
+      "seconds": 9.7
+    },
+    "annona-pre": {
+      "tasks": 1500,
+      "restricted": 500,
+      "misfiled": 113,
+      "leak_rate": 0.804,
+      "leak_rate_misfiled": 1.0,
+      "sinks": {
+        "network": 402,
+        "frontier": 113
+      },
+      "completion_rate": 0.9346666666666666,
+      "hold_rate": 0.06533333333333333,
+      "ledger_entries_audited": 0,
+      "compliance_violations": 0,
+      "seconds": 9.6
+    },
+    "annona-paths": {
+      "tasks": 1500,
+      "restricted": 500,
+      "misfiled": 113,
+      "leak_rate": 0.226,
+      "leak_rate_misfiled": 1.0,
+      "sinks": {
+        "frontier": 113,
+        "network": 113
+      },
+      "completion_rate": 0.9346666666666666,
+      "hold_rate": 0.06533333333333333,
+      "ledger_entries_audited": 8804,
+      "compliance_violations": 0,
+      "seconds": 9.8
+    },
+    "annona+judge(0.05)": {
+      "tasks": 1500,
+      "restricted": 500,
+      "misfiled": 113,
+      "leak_rate": 0.008,
+      "leak_rate_misfiled": 0.035398230088495575,
+      "sinks": {
+        "frontier": 4,
+        "network": 4
+      },
+      "completion_rate": 0.916,
+      "hold_rate": 0.084,
+      "ledger_entries_audited": 8857,
+      "compliance_violations": 0,
+      "seconds": 10.4
+    },
+    "annona+judge(0.01)": {
+      "tasks": 1500,
+      "restricted": 500,
+      "misfiled": 113,
+      "leak_rate": 0.002,
+      "leak_rate_misfiled": 0.008849557522123894,
+      "sinks": {
+        "frontier": 1,
+        "network": 1
+      },
+      "completion_rate": 0.916,
+      "hold_rate": 0.084,
+      "ledger_entries_audited": 8860,
+      "compliance_violations": 0,
+      "seconds": 11.0
+    }
+  }
+}

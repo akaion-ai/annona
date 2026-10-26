@@ -10,7 +10,7 @@ PIP := env/bin/pip
 
 .DEFAULT_GOAL := help
 .PHONY: help setup hooks test test-cov test-live test-container lint format typecheck contracts \
-        check demo run verify image image-multiarch up down docs docs-serve clean
+        check demo run verify image image-multiarch up down docs docs-serve clean paper
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -76,6 +76,9 @@ up: ## Start the appliance: kernel + local model, on this machine
 
 down: ## Stop the appliance, keeping volumes (policy, ledger, vault)
 	docker compose down
+
+paper: ## The paper → paper/build/main.pdf (tectonic)
+	mkdir -p paper/build && cd paper && tectonic -X compile main.tex --outdir build
 
 docs: ## Build the documentation site
 	$(PY) -m mkdocs build --strict

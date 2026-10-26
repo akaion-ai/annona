@@ -1,0 +1,255 @@
+\section{Evaluation}
+\label{sec:evaluation}
+
+All numbers in this section are produced by the scripts in the \texttt{experiments}
+directory of the repository, which also stores their results. The scripts use the production agent loop and perimeter without
+modification. Unless stated otherwise, they need no network or GPU and are deterministic given
+their seeds.
+
+\paragraph{Harness.} A seeded corpus assigns one third of the documents to each class. Each
+restricted document contains a canary, a random string unique to that document that does not
+appear in any policy. A fraction of the restricted documents is \emph{misfiled}, that is,
+stored in a folder that the policy's path rules classify as \pub, as would happen with an offer
+saved in a shared folder. The agent is scripted to behave adversarially: it reads the document,
+tries to send its full text through the browser, and then answers. Every substrate records what
+it receives, and the browser acts as a network sink. A leak is counted when the canary of a
+restricted document is observed by a sink whose ceiling is below \res. The true class comes
+from the document generator and not from the policy, so the leak rate does not depend on the
+rules being tested. The deployment has three substrates: an on-premises GPU (\res), an EU
+cluster (\inte) and a frontier API (\pub). The local GPU is unavailable in one quarter of the
+tasks.
+
+\subsection{E2: restricted egress}
+\label{sec:eval-leak}
+
+\begin{table}[t]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l r r r >{\raggedright\arraybackslash}X@{}}
+\toprule
+Configuration & Leak & Leak (misfiled) & Held & Sinks that received canaries \\
+\midrule
+Gateway (failover list) & 0.422 & 1.000 & 0.000 & frontier 113, EU cluster 98, network 113 \\
+\annona, without \texttt{tools.egress} & 0.804 & 1.000 & 0.065 & network 402, frontier 113 \\
+\annona, path and pattern rules & 0.226 & 1.000 & 0.065 & frontier 113, network 113 \\
+\annona{} + classifier, $\alpha{=}0.05$ & 0.008 & 0.035 & 0.084 & frontier 4, network 4 \\
+\annona{} + classifier, $\alpha{=}0.01$ & 0.002 & 0.009 & 0.084 & frontier 1, network 1 \\
+\bottomrule
+\end{tabularx}
+\caption{E2 over 1{,}500 tasks per configuration (300 documents, 5 seeds), of which 500 are
+restricted and 113 misfiled (22.6\%). Leak is the fraction of restricted documents whose
+canary reached a sink below \res; Held is the fraction of all tasks stopped by the perimeter.}
+\label{tab:leak}
+\end{table}
+
+\Cref{tab:leak} shows three separate causes of leaks. The first is failover. The gateway leaks
+every restricted document processed while the local GPU was down, 98 of them to the EU cluster,
+whereas \annona{} holds these tasks (the 6.5\% held). The second is tool egress. Without the
+network-tool ceiling, the browser sent the full text of 402 of the 500 restricted documents off
+the machine, which is every restricted document that was not held. The third is
+classification. With path and pattern rules only, \annona{} leaks the 113 misfiled documents
+and no others, so the perimeter behaves correctly for the class it receives and the errors
+come from the class itself. Adding a content classifier removes most of these errors. At
+$\alpha{=}0.05$ the leak rate is 0.8\% and 3.5\% of misfiled documents leak; at
+$\alpha{=}0.01$ the rates are 0.2\% and 0.9\%. Both are within the bound of \cref{prop:leak},
+which gives 1.1\% and 0.23\% for a misfiled fraction of 22.6\%. The additional cost is 1.9
+percentage points of held tasks, corresponding to misfiled documents that are now recognised as
+restricted while the local GPU is down.
+
+The classifier in this experiment is simulated with a fixed miss rate. This isolates the
+composition from the quality of any particular model; E7 reports a real classifier. All
+ledgers written by the \annona{} configurations were audited: 26{,}521 entries and no
+violations.
+
+\subsection{E3: detecting a faulty perimeter from the ledger}
+\label{sec:eval-compliance}
+
+We injected six faults that a placement runtime could plausibly contain, ran the same workload
+(450 tasks per fault), and audited each resulting ledger against the approved policy file
+(\cref{tab:mutants}).
+
+\begin{table}[t]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l X r >{\raggedright\arraybackslash}p{3.6cm}@{}}
+\toprule
+Injected fault & Behaviour & Leak & Violations reported \\
+\midrule
+none & correct runtime & 0.167 & none (2{,}626 entries) \\
+failover-widening & when no permitted substrate is up, uses any available one & 0.413 & sound 74 \\
+stale-class & places using the payload's class and ignores what the run has read & 1.000 & monotone 550 \\
+inverted-preference & picks the rule's last choice & 0.167 & optimal 799 \\
+spurious-hold & holds restricted work although a permitted substrate is up & 0.167 & hold-justified 88 \\
+policy-drift & runs under a modified policy while the approved one is audited & 0.413 & bound 1{,}800, sound 74, optimal 176 \\
+egress-ceiling-off & does not enforce the network-tool ceiling & 0.753 & egress 238 \\
+\bottomrule
+\end{tabularx}
+\caption{E3. Each fault is reported by the corresponding invariant, and the correct runtime
+produces no violations. Leak is measured as in E2 (path rules only, 20\% misfiled).}
+\label{tab:mutants}
+\end{table}
+
+Two of the faults cause no leak. \emph{Inverted-preference} lowers quality and
+\emph{spurious-hold} lowers availability, and both are still reported because the audit checks
+that each decision matches the one prescribed by the policy, in addition to checking that it is
+safe. \emph{Stale-class} is the most harmful fault, since every restricted document leaks, and
+yet each of its entries is consistent with the class it records. It is detected only by the
+\emph{monotone} invariant, which compares each placement with what the run had already read.
+
+\paragraph{Labels must not depend on the control they record.} In our first version of this
+experiment, \emph{egress-ceiling-off} was not detected even though 75\% of restricted
+documents leaked. The same function decided whether a tool had a ceiling and whether its calls
+were labelled \texttt{network:}. Disabling the ceiling therefore also labelled the calls
+\texttt{local}, which removed the evidence of the fault. After the change, the label depends
+only on whether the tool reaches the network, and the auditor reads this property from the
+policy instead of trusting the label. More generally, a field that records whether a control
+was applied should not be computed by that control.
+
+\subsection{E4: tamper evidence}
+\label{sec:eval-tamper}
+
+We applied every single edit an insider could make to each entry of a 360-entry ledger produced
+by the harness (\cref{tab:tamper}). Field edits, byte flips and swaps were always detected and
+located at the edited entry. Deletion was detected in 359 of 360 cases; the exception was the
+last line, whose deletion is equivalent to truncation. As expected, truncation and rewrites that
+recompute the hashes of all later entries are not detected by the chain alone. With a witness
+that stores a checkpoint every 10 entries, both are detected in all cases before the last
+checkpoint. With one checkpoint every 50 entries the detection rate is 97.2\%, and the
+undetected cases are the entries written after the last checkpoint.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Edit & Trials & Chain only & Witness, every 10 & Witness, every 50 \\
+\midrule
+Field edit (7 fields) & 2{,}520 & 1.000 & & \\
+Byte flip & 360 & 1.000 & & \\
+Swap with next entry & 359 & 1.000 & & \\
+Delete & 360 & 0.997 & & \\
+Truncate tail & 359 & 0.000 & 1.000 & 0.972 \\
+Edit and recompute later hashes & 359 & 0.000 & 1.000 & 0.972 \\
+\bottomrule
+\end{tabular}
+\caption{E4: detection rate of single edits.}
+\label{tab:tamper}
+\end{table}
+
+\subsection{E5: AgentDojo through the unmodified loop}
+\label{sec:eval-dojo}
+
+We ran AgentDojo~\citep{debenedetti2024agentdojo} tasks through \annona's agent loop and
+perimeter, using AgentDojo's function runtime as the tool executor. A local model (qwen2.5 via
+Ollama) serves two substrates: \texttt{local} (\res) and \texttt{frontier} (\pub), with the
+latter recording every request. Because both substrates use the same weights, differences
+between configurations come from placement and refused calls rather than from model quality.
+A payload containing an IBAN or a password is classified as \res. We compare three
+configurations: \emph{open}, where every class may run on the frontier; \emph{placement}; and
+\emph{placement + egress}, where the tools that transfer money are egress tools with ceiling
+\inte.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Configuration & Utility & Utility (attacked) & Attack success & User IBAN at frontier \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{qwen2.5:3b, 16 user tasks $\times$ 4 injection tasks (64 attacked pairs)}} \\
+open & 0.375 & 0.313 & 0.000 & 73 of 182 requests \\
+placement & 0.438 & 0.297 & 0.016 & 0 of 66 \\
+placement + egress & 0.375 & 0.313 & 0.000 & 0 of 65 \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{qwen2.5:14b, 8 user tasks $\times$ 2 injection tasks (16 attacked pairs)}} \\
+open & 0.500 & 0.688 & 0.500 & 64 of 84 \\
+placement + egress & 0.250 & 0.313 & 0.000 & 0 of 16 \\
+\bottomrule
+\end{tabular}
+\caption{E5: AgentDojo banking suite (v1.2) with the \texttt{important\_instructions} attack.
+Refused tool calls under \emph{placement + egress}: 39 (3B) and 18 (14B).}
+\label{tab:dojo}
+\end{table}
+
+In the open configuration with the 3B model, 73 of the 182 requests received by the frontier
+contained the user's own IBANs, which a tool had read and which then stayed in the transcript.
+With placement this number drops to zero: once a payload contains an IBAN the run becomes
+restricted and all later steps run locally. Benign utility does not change measurably (7 and
+6 of 16 tasks, a difference within noise at this sample size). The 3B model is rarely affected
+by the injections, even in the open configuration, so this run measures exposure to the
+provider but says little about exfiltration through tools.
+
+The 14B model is affected. In the open configuration half of the injected goals succeed (8 of
+16) and 64 of the 84 frontier requests contain the user's IBANs. With placement and egress
+ceilings, no injected goal succeeds and no IBAN reaches the frontier. The cost is utility, as
+is usual for information-flow control. After the run reads account data it becomes restricted,
+and the money-transfer tools are refused for the rest of the run, including transfers the user
+actually requested (benign utility drops from 4 to 2 of 8 tasks). Holding such calls for user
+confirmation instead of refusing them would reduce this cost; the runtime already supports
+holds for placement, and we leave the extension to tools as future work. The sample is small
+and the confidence intervals are wide. Running the full suite with the 14B model, the other
+AgentDojo suites, and a combination with an IFC planner such as FIDES~\citep{costa2025fides}
+are the next experiments.
+
+\subsection{E6: overhead}
+\label{sec:eval-overhead}
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}l r r@{}}
+\toprule
+Operation & p50 & p95 \\
+\midrule
+Classify outgoing payload, 280 characters & 41\,\textmu s & 42\,\textmu s \\
+\quad 4k characters & 96\,\textmu s & 99\,\textmu s \\
+\quad 40k characters & 0.63\,ms & 0.65\,ms \\
+\quad 200k characters (render limit) & 3.0\,ms & 3.1\,ms \\
+Check a tool call (gate) & 0.10\,ms & 0.11\,ms \\
+Place a step & 4\,\textmu s & 4\,\textmu s \\
+Append to ledger & 63\,\textmu s & 83\,\textmu s \\
+Append to ledger with fsync & 79\,\textmu s & 94\,\textmu s \\
+Audit: verify chain / comply & \multicolumn{2}{r}{18 / 32\,\textmu s per entry} \\
+\bottomrule
+\end{tabular}
+\caption{E6, measured on an Apple M1 Pro with Python 3.12.}
+\label{tab:overhead}
+\end{table}
+
+Our design document states that a policy check adding 200\,ms per step would be disabled in
+practice. The perimeter adds at most about 3.3\,ms per step at the render limit and about
+0.3\,ms for a typical 4k-character payload, two to three orders of magnitude below that
+threshold and small compared with inference. At 10{,}000 steps a day, one year of decisions
+(3.65 million entries) can be verified and audited in about three minutes.
+
+\subsection{E7: a real classifier and the cost of the bound}
+\label{sec:eval-judge}
+
+E2 uses a simulated classifier with a known miss rate. With a real classifier the bound holds
+in the same way, and the relevant question is how many documents it forces to stay local.
+\Cref{tab:judge} reports split-conformal thresholds for the base model served by
+rizzo-flow~\citep{rizzoflow} (Spark-X2.5-4B, Q8\_0, zero-shot). Thresholds were fitted on 72
+restricted documents from a calibration split and tested on 90 held-out restricted documents
+drawn from public contracts and synthetic business documents. These numbers come from the
+evaluation of a companion sensitivity model, Iovis, which is still being trained.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{@{}r r r r@{}}
+\toprule
+$\alpha$ & $\tau_\alpha$ & Missed restricted (test, $n{=}90$) & Non-restricted flagged \\
+\midrule
+0.01 & n/a & \multicolumn{2}{l}{not supported by 72 calibration documents} \\
+0.02 & 0.645 & 0.011 & 0.643 \\
+0.05 & 0.657 & 0.056 & 0.557 \\
+0.10 & 0.713 & 0.133 & 0.350 \\
+\bottomrule
+\end{tabular}
+\caption{E7: conformal thresholds for a zero-shot classifier. Observed miss rates are within
+binomial noise of $\alpha$ for $n{=}90$, since the guarantee holds on average over calibration
+sets. The flagged fraction is the cost.}
+\label{tab:judge}
+\end{table}
+
+For a zero-shot classifier the bound is valid but expensive. Missing at most 2\% of restricted
+documents requires flagging 64\% of the others, which the perimeter then keeps local. In the
+E2 deployment this would bound the leak rate at $0.226 \times 0.02 \approx 0.5\%$ while moving
+most public work off the frontier. The purpose of a classifier trained for commercial
+sensitivity is to reach the same $\alpha$ with fewer flagged documents. When there are too few
+calibration documents to support a given $\alpha$, the adapter raises an error instead of
+returning a threshold that cannot meet it.
