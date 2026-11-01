@@ -1,0 +1,21 @@
+# AMD GPUs for the local model: Radeon cards and Ryzen AI Max (Strix Halo).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.amd.yml up -d
+#
+# Two backends reach an AMD GPU, and on Strix Halo (gfx1151) which one is
+# faster depends on the model and the driver release:
+#   ROCm   (default)  OLLAMA_AMD_IMAGE=ollama/ollama:rocm
+#   Vulkan            OLLAMA_AMD_IMAGE=ollama/ollama:latest OLLAMA_VULKAN=1
+# Check with `annona doctor`: a model loaded with nothing in GPU memory is
+# reported. The ROCm image is amd64 only, which is what these machines are.
+services:
+  ollama:
+    image: ${OLLAMA_AMD_IMAGE:-ollama/ollama:rocm}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - ${RENDER_GID:-render}
+    environment:
+      OLLAMA_VULKAN: ${OLLAMA_VULKAN:-0}

@@ -62,6 +62,11 @@ console = Console()
 # claim is that small models fail tool calls on malformed arguments rather than
 # wrong intent, and qwen2.5 is the family that claim was measured on.
 PREFERRED_MODELS = (
+    # The two that only a big unified-memory box holds (DGX Spark, Ryzen AI Max,
+    # a 64 GB+ Mac). Same family, so the tool-use claim carries; first because a
+    # machine that has them was set up for them — `recommend_model` says so.
+    "qwen2.5:72b",
+    "qwen2.5:32b",
     "qwen2.5:14b",
     "qwen2.5:7b",
     "qwen2.5:3b",
@@ -127,7 +132,26 @@ def probe_runtime(endpoint: str = DEFAULT_ENDPOINT, timeout: float = 3.0) -> Run
     )
 
 
-def choose_model(installed: tuple[str, ...], requested: str | None = None) -> tuple[str, str]:
+# (minimum memory in GB, model). A q4 model plus its context should stay near
+# 60% of what the GPU can address, so the 72b (~47 GB) wants 96 GB and the 32b
+# (~20 GB) wants 40. Unified memory (Apple, GB10, Strix Halo) counts whole.
+MEMORY_TIERS = (
+    (96.0, "qwen2.5:72b"),
+    (40.0, "qwen2.5:32b"),
+    (20.0, "qwen2.5:14b"),
+    (10.0, "qwen2.5:7b"),
+    (0.0, "qwen2.5:3b"),
+)
+
+
+def recommend_model(memory_gb: float) -> str:
+    """The largest model of the tested family this much memory holds with room to work."""
+    return next(model for floor, model in MEMORY_TIERS if memory_gb >= floor)
+
+
+def choose_model(
+    installed: tuple[str, ...], requested: str | None = None, memory_gb: float | None = None
+) -> tuple[str, str]:
     """Pick the model the policy should name, and say why.
 
     Returns ``(model, reason)``. An explicit ``--model`` always wins, including
@@ -146,7 +170,13 @@ def choose_model(installed: tuple[str, ...], requested: str | None = None) -> tu
     if installed:
         return installed[0], "the only thing installed"
 
-    return FALLBACK_MODEL, "nothing installed — this is the documented default"
+    # Nothing installed: name what this machine should pull, not a constant.
+    # 128 GB on a DGX Spark and 16 GB on a laptop deserve different answers.
+    if memory_gb is None:
+        from runner.services.host import model_memory_gb
+
+        memory_gb = model_memory_gb()
+    return recommend_model(memory_gb), f"nothing installed — the best fit for {memory_gb:.0f} GB"
 
 
 def _ledger_path() -> Path:
@@ -567,6 +597,22 @@ class Diagnosis:
         return [c for c in self.checks if not c.ok and not c.fatal]
 
 
+def models_on_cpu(endpoint: str) -> list[str]:
+    """Models Ollama has loaded with nothing in GPU memory (``/api/ps``, size_vram 0).
+
+    Only loaded models say where they run; an idle runtime reports nothing, and
+    nothing is not a failure.
+    """
+    import httpx
+
+    base = endpoint.rstrip("/").removesuffix("/v1")
+    try:
+        loaded = httpx.get(f"{base}/api/ps", timeout=2.0).json().get("models", [])
+    except (httpx.HTTPError, ValueError):
+        return []
+    return [str(m.get("name", "")) for m in loaded if not m.get("size_vram")]
+
+
 def diagnose(port: int = 7070) -> Diagnosis:
     """Every check ``doctor`` runs, as data, so the tests can assert on it."""
     d = Diagnosis()
@@ -642,6 +688,33 @@ def diagnose(port: int = 7070) -> Diagnosis:
                     f"up at {substrate.endpoint}"
                     + (f" · {declared}" if declared else "")
                     + (f" · {len(probe.models)} model(s)" if probe.models else ""),
+                )
+
+    # The machine, and whether the model is actually on its GPU. The failure this
+    # catches is silent: a container without GPU passthrough, or a driver Ollama
+    # did not pick up, answers every question — ten times slower, from the CPU.
+    from runner.services.host import machine, model_memory_gb
+
+    box = machine()
+    gpu = box["accelerator"] != "CPU only"
+    memory = model_memory_gb()
+    d.add(
+        "machine",
+        True,
+        f"{box['chip']} · {box['accelerator']} · {memory:.0f} GB · fits {recommend_model(memory)}",
+    )
+    if gpu and policy is not None:
+        for substrate in policy.substrates:
+            if substrate.kind != "ollama" or not substrate.endpoint:
+                continue
+            on_cpu = models_on_cpu(substrate.endpoint)
+            if on_cpu:
+                d.add(
+                    f"gpu {substrate.id}",
+                    False,
+                    f"{', '.join(on_cpu)} loaded on the CPU, not the GPU",
+                    "see docs/reference/hardware.md — GPU passthrough or the runtime's backend",
+                    fatal=False,
                 )
 
     # Ledger. An empty one is fine and common; a broken chain is not.

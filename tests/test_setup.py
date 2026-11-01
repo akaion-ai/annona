@@ -81,9 +81,17 @@ def test_an_explicit_model_wins_even_when_it_is_not_installed():
     assert "not installed" in why
 
 
-def test_with_nothing_installed_the_policy_still_names_something():
-    model, _ = choose_model(())
-    assert model == cli_setup.FALLBACK_MODEL
+def test_with_nothing_installed_the_policy_names_what_this_machine_should_pull():
+    assert choose_model((), memory_gb=128)[0] == "qwen2.5:72b"  # DGX Spark, Ryzen AI Max 128
+    assert choose_model((), memory_gb=64)[0] == "qwen2.5:32b"
+    assert choose_model((), memory_gb=32)[0] == "qwen2.5:14b"
+    assert choose_model((), memory_gb=16)[0] == "qwen2.5:7b"
+    assert choose_model((), memory_gb=8)[0] == "qwen2.5:3b"
+    assert "128 GB" in choose_model((), memory_gb=128)[1]
+
+
+def test_a_machine_set_up_for_a_big_model_keeps_it():
+    assert choose_model(("qwen2.5:7b", "qwen2.5:72b"))[0] == "qwen2.5:72b"
 
 
 # ── setup ─────────────────────────────────────────────────────────────────────

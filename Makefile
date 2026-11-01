@@ -71,11 +71,16 @@ image: ## Build the container image for this machine's architecture
 image-multiarch: ## Build for arm64 (DGX Spark) and amd64, the release matrix
 	docker buildx build --platform linux/arm64,linux/amd64 -t annona:dev .
 
-up: ## Start the appliance: kernel + local model, on this machine
-	docker compose up -d
+# The GPU overlay this host needs: nvidia (cards, DGX Spark), amd (Radeon,
+# Ryzen AI Max) or none. Detected; override with `make up GPU=none`.
+GPU ?= $(shell command -v nvidia-smi >/dev/null 2>&1 && echo nvidia || { test -e /dev/kfd && echo amd; } || echo none)
+COMPOSE = docker compose -f docker-compose.yml $(if $(filter nvidia amd,$(GPU)),-f docker-compose.$(GPU).yml)
+
+up: ## Start the appliance: kernel + local model, with this machine's GPU (GPU=nvidia|amd|none)
+	$(COMPOSE) up -d
 
 down: ## Stop the appliance, keeping volumes (policy, ledger, vault)
-	docker compose down
+	$(COMPOSE) down
 
 docs: ## Build the documentation site
 	$(PY) -m mkdocs build --strict

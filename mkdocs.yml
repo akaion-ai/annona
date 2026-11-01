@@ -68,6 +68,7 @@ nav:
       - Anonymisation and its limits: reference/anonymisation.md
       - Frontier substrates: reference/frontier-substrates.md
       - Running it on a server: reference/running-on-a-server.md
+      - Hardware: reference/hardware.md
       - Backends: reference/backends.md
       - Releasing: reference/releasing.md
       - Typing debt: reference/typing-debt.md

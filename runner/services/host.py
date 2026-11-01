@@ -15,6 +15,7 @@ import shutil
 import subprocess
 from collections.abc import Iterable
 from functools import cache
+from pathlib import Path
 
 import httpx
 import psutil
@@ -24,7 +25,7 @@ from runner.kernel.errors import PolicyError
 from runner.policy.loader import load_policy
 from runner.services.enforcement import policy_path
 
-__all__ = ["sample"]
+__all__ = ["describe", "machine", "model_memory_gb", "sample"]
 
 
 def _ollama_endpoints() -> list[str]:
@@ -48,6 +49,75 @@ def _run(*cmd: str) -> str:
         return ""
 
 
+def _linux_cpu_name() -> str:
+    """``platform.processor()`` is empty on Linux; /proc/cpuinfo is not."""
+    try:
+        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+            if line.lower().startswith(("model name", "hardware")):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def _amd_gpu_present() -> bool:
+    """An AMD GPU on Linux: PCI vendor 0x1002 under /sys/class/drm."""
+    try:
+        return any(
+            p.read_text().strip() == "0x1002"
+            for p in Path("/sys/class/drm").glob("card*/device/vendor")
+        )
+    except OSError:
+        return False
+
+
+def describe(os_: str, arch: str, chip: str, nvidia_gpu: str = "", amd_gpu: bool = False) -> str:
+    """Where a local model runs on this machine, in one line.
+
+    Pure, so the hardware Annona is sold on — a DGX Spark, a Ryzen AI Max box —
+    is tested without owning one. Unified memory is named because it decides
+    which model fits: on those three the GPU's memory *is* the machine's.
+    """
+    if os_ == "Darwin":
+        if arch == "arm64":
+            return "Apple GPU · Metal · unified memory"
+        return "CPU (Intel Mac, no Metal offload)"
+    if nvidia_gpu:
+        if "GB10" in nvidia_gpu:
+            return "NVIDIA GB10 (DGX Spark) · CUDA · unified memory"
+        # nvidia-smi already says "NVIDIA L40S"; prefixing it made "NVIDIA NVIDIA".
+        name = nvidia_gpu if nvidia_gpu.startswith("NVIDIA") else f"NVIDIA {nvidia_gpu}"
+        return f"{name} · CUDA"
+    if amd_gpu:
+        if "Ryzen AI Max" in chip:
+            return "AMD Radeon (Strix Halo) · Vulkan/ROCm · unified memory"
+        return "AMD Radeon · Vulkan/ROCm"
+    return "CPU only"
+
+
+def _nvidia_gpu() -> str:
+    if not shutil.which("nvidia-smi"):
+        return ""
+    names = _run("nvidia-smi", "--query-gpu=name", "--format=csv,noheader").splitlines()
+    return names[0].strip() if names else ""
+
+
+def model_memory_gb() -> float:
+    """Memory a local model can use: the card's on a discrete NVIDIA GPU, else RAM.
+
+    On Apple Silicon, GB10 and Strix Halo the GPU addresses system memory, so
+    RAM is the right number; a discrete card is limited by its own.
+    """
+    gpu = _nvidia_gpu()
+    if gpu and "GB10" not in gpu:
+        mib = _run("nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits")
+        try:
+            return float(mib.splitlines()[0]) / 1024
+        except (ValueError, IndexError):
+            pass
+    return psutil.virtual_memory().total / 2**30
+
+
 @cache
 def machine() -> dict[str, str]:
     """What the machine is and where a local model runs. It does not change, so once."""
@@ -55,17 +125,11 @@ def machine() -> dict[str, str]:
     chip = platform.processor() or arch
     if os_ == "Darwin":
         chip = _run("sysctl", "-n", "machdep.cpu.brand_string") or chip
-        accelerator = (
-            "Apple GPU · Metal · unified memory"
-            if arch == "arm64"
-            else "CPU (Intel Mac, no Metal offload)"
-        )
-    elif shutil.which("nvidia-smi") and (
-        gpu := _run("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
-    ):
-        accelerator = f"NVIDIA {gpu.splitlines()[0]} · CUDA"
-    else:
-        accelerator = "CPU only"
+    elif os_ == "Linux":
+        chip = _linux_cpu_name() or chip
+    accelerator = describe(
+        os_, arch, chip, nvidia_gpu=_nvidia_gpu(), amd_gpu=os_ == "Linux" and _amd_gpu_present()
+    )
     return {"os": os_, "arch": arch, "chip": chip, "accelerator": accelerator}
 
 
