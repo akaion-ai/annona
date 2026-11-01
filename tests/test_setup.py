@@ -431,3 +431,12 @@ def test_status_says_which_wiring_the_installation_is_on(runner, fresh_home, mon
     after = runner.invoke(app, ["status"]).output
     assert "Unenforced" not in after
     assert "Enforced" in after
+
+
+@pytest.mark.parametrize("command", [["doctor"], ["status"]])
+def test_a_read_only_command_leaves_an_empty_home_empty(runner, fresh_home, command):
+    """`doctor` says it changes nothing; it created ~/.akaion, and `status` the key in it (#42)."""
+    runner.invoke(app, command)
+
+    assert not (fresh_home / ".akaion").exists()
+    assert not (fresh_home / ".annona").exists()
