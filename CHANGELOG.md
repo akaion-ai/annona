@@ -6,6 +6,57 @@ Notable changes to this project. Format based on
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-11-01
+
+Everything Enzo Iodice found testing 0.1.3 from PyPI on Linux (#37–#43), fixed;
+the DGX Spark and the Ryzen AI Max as first-class targets; and an acceptance run
+for the link to Agents Studio.
+
+### Found by Enzo Iodice on 0.1.3
+
+- **The step's text stays out of `annona.log`** (#37). The log records length,
+  class and digest; the text only with `ANNONA_LOG_STEP_TEXT=1`. Every place
+  Annona writes is listed in *Where Annona writes*.
+- **A held step is not "completed"** (#38). `annona run --once` exits `0`
+  completed, `3` held, `4` queued, and says which rule held it.
+- **Payload digests are keyed** (#39). `hmac-sha256` with a per-machine key in
+  `$AKAION_HOME/digest.key` (0600): the ledger can no longer be used to test a
+  guess. Old bare digests still verify.
+- **Redaction keeps the conversation's shape** (#40). Material is redacted piece
+  by piece, the system prompt included (it used to go out unredacted), and tool
+  calls keep their arguments: a path is no longer turned into placeholders.
+- **No installer that edits your shell** (#41). `install.sh`,
+  `install-remote.sh` and `uninstall.sh` are gone; install with `pip`/`pipx` or
+  the app, and the docs say how to clean up what the old scripts left.
+- **`doctor` and `status` change nothing** (#42) on an empty home: no directory,
+  no key, until something needs to be written.
+- **One version** (#43). `runner.__version__` is the only place; the package,
+  banner, CLI, `/health` and the container read it, and a test holds the UI to it.
+- `AIClient.execute_command` is deleted: an unused path that sent `os.environ`.
+
+### DGX Spark and Ryzen AI Max
+
+- `docker compose up` works on a machine without an NVIDIA card (it failed on
+  every other one). The GPU is an overlay, `docker-compose.nvidia.yml` or
+  `docker-compose.amd.yml` (ROCm or Vulkan), and `make up` picks it.
+- `annona doctor` names the machine (GB10, Strix Halo, Apple, discrete NVIDIA),
+  the memory a model can use, the largest model that fits (128 GB →
+  `qwen2.5:72b`), and warns when Ollama loaded the model on the CPU.
+- *Hardware* reference page, honest about what has run on which machine.
+
+### The link to Agents Studio
+
+- **`make verify-link ORG=…`**: seven checks against the real Studio with a
+  throwaway runner (enroll, cancel, online, released, withheld, revoked,
+  ledger), also run in CI against an in-process Studio that keeps the contract.
+- A job the policy held is reported **failed** with the rule, not completed with
+  an empty answer.
+- `annona link serve` exits 3 on revoke whichever thread sees it first.
+- The heartbeat says what the machine is (accelerator, model memory), and
+  Studio shows it on the machine card.
+- The link guide is rewritten in full, and says at the top that the link is
+  optional.
+
 ### A follow-up can reach a file attached earlier (#16)
 
 Every `/ask` is a fresh run, and the window only sent the files attached to the
