@@ -29,6 +29,24 @@ DEFAULT_BRAIN_DIR = Path.home() / "akaion-brain"
 DEFAULT_LOCAL_PORT = 7070
 
 
+EXIT_CODES = {"completed": 0, "held": 3, "queued": 4}
+"""How `annona run --once` ends, per outcome. 1 is a failure, 2 a usage error."""
+
+
+def step_outcome(result: Any) -> tuple[str, str]:
+    """``("completed" | "held" | "queued", reason)`` for a step that did not raise.
+
+    A step the perimeter refused does not raise — the loop stops and returns
+    what it has — so "no exception" is not "done". Read from the placement the
+    enforced path attaches; the legacy path has none and is always completed.
+    """
+    inner = result.get("result") if isinstance(result, dict) else None
+    placement = inner.get("placement") if isinstance(inner, dict) else None
+    if isinstance(placement, dict) and placement.get("outcome") in ("held", "queued"):
+        return str(placement["outcome"]), str(placement.get("reason", ""))
+    return "completed", ""
+
+
 class RunnerDaemon:
     """Local daemon — Brain UI + on-demand push to remote COT."""
 
@@ -202,7 +220,11 @@ class RunnerDaemon:
 
         try:
             result = self.executor.execute(task)
-            logger.info(f"✅ Task {task_id} completed successfully")
+            outcome, reason = step_outcome(result)
+            if outcome == "completed":
+                logger.info(f"✅ Task {task_id} completed")
+            else:
+                logger.warning(f"⛔ Task {task_id} {outcome}: {reason}")
             self._capture_task_to_brain(task, result)
             self.tasks_executed += 1
             return result
