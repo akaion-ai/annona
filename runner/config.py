@@ -28,8 +28,9 @@ class ConfigManager:
     """Loads, merges and persists the runner configuration."""
 
     def __init__(self, config_dir: Optional[Path] = None):
+        # Not created here: read-only commands (`doctor`, `status`) build a
+        # ConfigManager and must leave an empty home empty (#42).
         self.config_dir = config_dir or _default_home()
-        self.config_dir.mkdir(parents=True, exist_ok=True)
 
         self.config_path = self.config_dir / "config.yaml"
         self.default_config_path = Path(__file__).parent.parent / "config.yaml"
@@ -40,6 +41,7 @@ class ConfigManager:
 
     def create_default_config(self):
         """Write the default configuration."""
+        self.config_dir.mkdir(parents=True, exist_ok=True)
         if self.default_config_path.exists():
             shutil.copy(self.default_config_path, self.config_path)
         else:
@@ -70,6 +72,7 @@ class ConfigManager:
 
     def save_config(self, config: Dict[str, Any]):
         """Persist the configuration."""
+        self.config_dir.mkdir(parents=True, exist_ok=True)
         with open(self.config_path, "w") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 

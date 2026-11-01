@@ -11,6 +11,7 @@ In entrambi i casi il risultato è un Firebase ID token usato come Bearer.
 Tokens are refreshed automatically via the refresh token when they expire (~1h).
 """
 
+import functools
 import json
 import os
 import socket
@@ -199,18 +200,26 @@ class AuthManager:
         if config_dir is None:
             override = os.getenv("AKAION_HOME")
             config_dir = Path(override).expanduser() if override else Path.home() / ".akaion"
+        # Nothing is created here: `status` and `doctor` build an AuthManager to
+        # ask whether one is signed in, and asking must not write (#42). The
+        # directory and the key appear the first time something is encrypted.
         self.config_dir = config_dir
-        self.config_dir.mkdir(parents=True, exist_ok=True)
         self.auth_file = self.config_dir / "auth.json"
         self.key_file = self.config_dir / ".key"
-        self._ensure_encryption_key()
 
-    def _ensure_encryption_key(self):
+    @functools.cached_property
+    def cipher(self) -> Fernet:
         if not self.key_file.exists():
-            key = Fernet.generate_key()
-            self.key_file.write_bytes(key)
-            self.key_file.chmod(0o600)
-        self.cipher = Fernet(self.key_file.read_bytes())
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+            # Created 0600, not chmod-ed after: no moment where it is readable.
+            try:
+                fd = os.open(self.key_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:  # another process won the race; use its key
+                pass
+            else:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(Fernet.generate_key())
+        return Fernet(self.key_file.read_bytes())
 
     def _encrypt(self, data: str) -> str:
         return self.cipher.encrypt(data.encode()).decode()
