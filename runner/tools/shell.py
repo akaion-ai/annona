@@ -10,6 +10,8 @@ from typing import Annotated, Any, Dict, Optional
 from loguru import logger
 from pydantic import Field
 
+from runner.kernel.logtext import shown
+
 from .base import FilePath, Tool, ToolArguments, forwarded
 
 
@@ -43,7 +45,7 @@ class ShellTool(Tool[ShellArgs]):
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """Run one shell command."""
-        logger.info(f"Executing shell command: {command}")
+        logger.info(f"Executing shell command: {shown(command)}")
 
         timeout = timeout or self.default_timeout
 
@@ -60,7 +62,7 @@ class ShellTool(Tool[ShellArgs]):
             }
 
         except subprocess.TimeoutExpired:
-            logger.error(f"Command timeout after {timeout}s: {command}")
+            logger.error(f"Command timeout after {timeout}s: {shown(command)}")
             return {
                 "success": False,
                 "error": f"Command timeout after {timeout}s",

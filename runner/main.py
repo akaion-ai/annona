@@ -21,6 +21,7 @@ from .brain.capture import capture_task_as_note
 from .brain.manager import BrainManager
 from .config import ConfigManager
 from .executor import TaskExecutor
+from .kernel.logtext import shown
 from .local_api import LocalAPIServer
 from .service_urls import resolve_service_url
 from .sync.engine import SyncEngine
@@ -186,7 +187,7 @@ class RunnerDaemon:
 
     def execute_once(self, task_description: str) -> Any:
         """Run a single ad-hoc task (CLI entry point)."""
-        logger.info(f"🎯 Executing task: {task_description}")
+        logger.info(f"🎯 Executing task: {shown(task_description)}")
 
         task = {
             "id": "local-" + str(int(time.time())),

@@ -9,6 +9,7 @@ from typing import Any, Dict
 from loguru import logger
 
 from .ai_client import AIClient
+from .kernel.logtext import shown
 from .permissions.manager import PermissionManager
 from .tools.registry import ToolRegistry
 
@@ -83,7 +84,7 @@ class TaskExecutor:
         if not command:
             raise ValueError("No command provided")
 
-        logger.info(f"Executing command: {command}")
+        logger.info(f"Executing command: {shown(command)}")
 
         result = self.ai_client.reason_and_execute(
             prompt=command,
@@ -120,7 +121,7 @@ class TaskExecutor:
         if not prompt:
             raise ValueError("No prompt provided")
 
-        logger.info(f"Executing AI task: {prompt}")
+        logger.info(f"Executing AI task: {shown(prompt)}")
 
         # Usa AI per ragionare ed eseguire
         result = self.ai_client.reason_and_execute(
@@ -146,7 +147,7 @@ class TaskExecutor:
             prompt = f"Path: {path}\n\nTask: {prompt}"
             context["working_path"] = path
 
-        logger.info(f"Executing explore task: {prompt[:80]}...")
+        logger.info(f"Executing explore task: {shown(prompt)}")
 
         result = self.ai_client.reason_and_execute(
             prompt=prompt,
