@@ -185,8 +185,6 @@ class TestExploreTask:
 
 class TestWorkflowTask:
     def test_workflow_executes_steps_in_order(self, executor, tmp_path):
-        executor._mock_ai.execute_command.return_value = {"response": "ok", "actions": []}
-
         f = tmp_path / "note.txt"
         f.write_text("step data")
 
