@@ -7,6 +7,13 @@ security features are usually sold wider than they are built.
 being detectable by anyone holding the file, using a command that contacts
 nobody.
 
+**It also claims:** that the file does not let its holder test a guess. What
+crossed is recorded as an HMAC under a key that stays on this machine
+(``$AKAION_HOME/digest.key``), not as a bare SHA-256 — anybody can hash
+"RSSMRA80A01H501U" and grep for it, and a short text can be brute-forced (#39).
+Entries written before the key existed carry a bare hex digest and still verify:
+the chain hashes whatever string is in the field.
+
 **It does not claim:** that the daemon ran the code it says it ran, or that an
 attacker with write access could not append plausible new entries after
 truncating the file. The first needs hardware attestation; the second needs an
@@ -26,7 +33,9 @@ Chaining is the standard construction::
 
 from __future__ import annotations
 
+import functools
 import hashlib
+import hmac
 import json
 import os
 import threading
@@ -41,6 +50,7 @@ from runner.audit.metrics import METRICS, hold_reason
 from runner.kernel.types import SensitivityClass, Subject
 
 __all__ = [
+    "DIGEST_PREFIX",
     "GENESIS_PREV",
     "Ledger",
     "LedgerEntry",
@@ -54,14 +64,46 @@ GENESIS_PREV = "0" * 64
 """Predecessor hash of the first entry. Fixed, so a chain has one valid start."""
 
 
+DIGEST_PREFIX = "hmac-sha256:"
+"""Marks a keyed digest. A bare 64-hex digest is the unkeyed one 0.1.3 wrote."""
+
+
+def _digest_key_path() -> Path:
+    home = os.getenv("AKAION_HOME")
+    return (Path(home).expanduser() if home else Path.home() / ".akaion") / "digest.key"
+
+
+@functools.lru_cache(maxsize=4)
+def _digest_key(path: Path) -> bytes:
+    """This machine's digest key: 32 random bytes, created once, mode 0600.
+
+    Beside the credentials rather than beside the ledger, so the folder a
+    ledger is copied out of does not carry the key with it. Its own file, not
+    the one that encrypts ``auth.json``: one key, one job, and signing out or
+    rotating credentials must not make old digests uncheckable.
+    """
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:  # another process made it first; use theirs
+            pass
+        else:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(os.urandom(32))
+    return path.read_bytes()
+
+
 def digest(payload: str) -> str:
-    """SHA-256 of a payload, as recorded instead of the payload itself.
+    """A keyed digest of a payload, as recorded instead of the payload itself.
 
     The ledger never stores what crossed, only a digest of it. A record of
     sensitive material is still sensitive material, and an audit trail that
-    leaks the thing it is auditing is a liability with a nice name.
+    leaks the thing it is auditing is a liability with a nice name — which an
+    unkeyed hash is, for anything short enough to guess (#39).
     """
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    key = _digest_key(_digest_key_path())
+    return DIGEST_PREFIX + hmac.new(key, payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _canonical(mapping: Mapping[str, Any]) -> str:

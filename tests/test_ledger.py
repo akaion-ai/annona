@@ -13,6 +13,7 @@ mid-append.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 
@@ -81,6 +82,54 @@ def test_the_payload_is_never_stored_only_its_digest(ledger):
     assert secret not in raw
     assert "RSSMRA85T10A562S" not in raw
     assert digest(secret) in raw
+
+
+def test_the_digest_does_not_let_the_holder_test_a_guess(ledger):
+    """An unkeyed SHA-256 let anyone holding the file hash "RSSMRA85T10A562S" and
+    grep for it, and brute-force anything short (#39)."""
+    guess = "RSSMRA85T10A562S"
+    ledger.record("egress", outcome="held", klass=RESTRICTED, payload=guess)
+
+    recorded = ledger.entries()[0].payload_digest
+    assert recorded.startswith("hmac-sha256:")
+    assert hashlib.sha256(guess.encode()).hexdigest() not in ledger.path.read_text()
+    assert recorded == digest(guess)  # but this machine can still check it
+
+
+def test_another_machine_gets_another_digest(tmp_path, monkeypatch):
+    here = digest("RSSMRA85T10A562S")
+    monkeypatch.setenv("AKAION_HOME", str(tmp_path / "elsewhere"))
+    assert digest("RSSMRA85T10A562S") != here
+
+
+def test_the_key_is_made_once_and_readable_only_by_its_owner(tmp_path, monkeypatch):
+    monkeypatch.setenv("AKAION_HOME", str(tmp_path / "home"))
+    first = digest("x")
+    key = tmp_path / "home" / "digest.key"
+    assert key.stat().st_mode & 0o777 == 0o600
+    assert len(key.read_bytes()) == 32
+    assert digest("x") == first
+
+
+def test_a_ledger_written_with_unkeyed_digests_still_verifies(tmp_path):
+    """0.1.3 wrote bare hex; the chain hashes whatever is in the field."""
+    path = tmp_path / "ledger.jsonl"
+    old = LedgerEntry(
+        seq=1,
+        ts="2026-10-23T00:00:00+00:00",
+        run_id="r",
+        step_id="s",
+        kind="egress",
+        outcome="held",
+        klass="restricted",
+        payload_digest=hashlib.sha256(b"x").hexdigest(),
+    ).sealed()
+    path.write_text(old.to_json() + "\n")
+
+    Ledger(path, fsync=False).record("egress", outcome="held", klass=RESTRICTED, payload="y")
+
+    assert verify_file(path).ok
+    assert verify_file(path).entries == 2
 
 
 def test_a_refusal_is_recorded_like_any_other_decision(ledger):

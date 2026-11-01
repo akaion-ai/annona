@@ -437,7 +437,7 @@ def test_the_source_is_offered_with_the_digest_to_edit_against(home):
     write_policy(home)
     body = client_for().get("/api/kernel/policy/source").json()
     assert "substrates:" in body["text"]
-    assert len(body["digest"]) == 64
+    assert body["digest"].startswith("hmac-sha256:") and len(body["digest"]) == 12 + 64
 
 
 def test_a_valid_replacement_is_written(home):
