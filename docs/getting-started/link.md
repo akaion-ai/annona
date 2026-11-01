@@ -19,6 +19,9 @@ machine's owner, not Studio, decides what an answer may carry. The design and
 what it refuses to do are [ADR 0006](../adr/0006-runner-link.md) and
 [ADR 0007](../adr/0007-release-bound-to-endpoint.md).
 
+![The link: Studio sends work, the machine runs it under its own policy and decides what returns](../assets/diagrams/link-light.svg#only-light)
+![The link: Studio sends work, the machine runs it under its own policy and decides what returns](../assets/diagrams/link-dark.svg#only-dark)
+
 ## When to use it, and when not to
 
 | Use the link when… | Don't, when… |

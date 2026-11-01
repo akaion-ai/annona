@@ -16,7 +16,7 @@
 ![placement](https://img.shields.io/badge/placement-per_step-informational?style=flat-square)
 ![leak rate](https://img.shields.io/badge/leak_rate-0-success?style=flat-square)
 ![ledger](https://img.shields.io/badge/ledger-hash--chained-success?style=flat-square)
-![tests](https://img.shields.io/badge/tests-559_passing-brightgreen?style=flat-square)
+![tests](https://img.shields.io/badge/tests-982_passing-brightgreen?style=flat-square)
 ![arch](https://img.shields.io/badge/arm64-+_amd64-lightgrey?style=flat-square)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)
 
@@ -49,6 +49,10 @@ provider a developer typed into a config file eighteen months ago.
 lives, and for every single step of every agent run it decides where that step is
 allowed to execute, enforces the decision, and writes it down.
 
+<p align="center"><img src="docs/assets/diagrams/why-held.svg" alt="annona why step_7f3a: HELD. class restricted (working set touched /mnt/pratiche/2026/BG-114.pdf); rule restricted → [local-gpu], on_unavailable: hold; local-gpu unhealthy; frontier and eu-cluster not chosen, their max_class is below restricted; held and queued for review; ledger entry #418, chain verified" width="860"></p>
+
+<details><summary>The same, as text</summary>
+
 ```
 $ annona why step_7f3a
 step_7f3a  inference  HELD
@@ -60,6 +64,8 @@ step_7f3a  inference  HELD
   outcome      held at 14:03:07, queued for operator review
   ledger       #418  sha256:9c1f…a7  (chain verified)
 ```
+
+</details>
 
 That refusal is the product. A gateway in the same situation would have quietly
 failed over to the frontier API and returned a good answer.
@@ -97,29 +103,12 @@ Nothing in the stack does that:
 
 ## How it works
 
-```mermaid
-flowchart TB
-    subgraph CP["Control plane · Kai · Agents Studio · or your own"]
-        PLAN["plans · memory · orchestration"]
-    end
-    subgraph WALLS["Your perimeter"]
-        FON["<b>ANNONA</b><br/>classify → decide placement → execute → record"]
-        DATA["files · databases · internal apps"]
-        GPU["your GPU<br/>vLLM · open weights"]
-    end
-    EU["private cluster<br/>EU tenant"]
-    FRONTIER["frontier APIs"]
-
-    PLAN -- "signed plan" --> FON
-    FON -. "cleared results · ledger digests<br/>never raw material" .-> PLAN
-    FON --> DATA
-    FON <--> GPU
-    FON <-- "class: internal" --> EU
-    FON <-- "class: public, or a brief" --> FRONTIER
-
-    classDef kernel fill:#1F6F68,color:#fff,stroke:#1F6F68,stroke-width:2px
-    class FON kernel
-```
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/architecture-dark.svg">
+  <img alt="Annona inside your perimeter: the control plane sends a signed plan and receives cleared results and ledger digests, never raw material. Annona reads your data and runs restricted work on your GPU; internal work may go to your EU tenant, public work or a brief to frontier APIs; restricted never crosses, and with nothing permitted the step is held." src="docs/assets/diagrams/architecture-light.svg">
+</picture>
+</p>
 
 Annona is deliberately **not** the thing that decides *what* to do. Planning and
 memory stay in the control plane — ours, or yours over three HTTP endpoints. The
@@ -146,20 +135,12 @@ where sovereign deployments die.
 
 Ask it to compare a client file against your case law:
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant A as Annona
-    participant L as Local model
-    participant X as Frontier API
-    U->>A: "Compare this client file with our case law"
-    A->>A: class = restricted (touched /mnt/pratiche)
-    A->>L: summarise locally → brief, 380 tokens
-    A->>A: reclassify the brief → still internal
-    A->>L: reason over brief + local index
-    A--)X: HELD — never called
-    A-->>U: answer · 3 steps · 3 local · 0 crossings
-```
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/verdicts-dark.svg">
+  <img alt="The same three-step plan. A client file, class restricted: summarise on local-gpu, reclassify, reason on local-gpu, the frontier call is held — three local steps, no crossing. A public tender: summarise and reason on the frontier model, allowed." src="docs/assets/diagrams/verdicts-light.svg">
+</picture>
+</p>
 
 Now ask the same question about a public tender document. Steps 1 and 3 are
 placed on the frontier model, the answer is better, and it costs a tenth as much.
@@ -171,13 +152,13 @@ placed on the frontier model, the answer is better, and it costs a tenth as much
 Every answer carries where it ran and under which rule. Nothing is inferred from
 a log afterwards — the decision is made before the step runs, and shown with it:
 
-![An answer with its placement: class internal, ran on local-gpu, one turn, 5.5s](docs/assets/screenshots/ask-placed-local-gpu.jpg)
-
 The same question under a policy that permits only the smaller model. Same code,
 same plan, different placement — and the answer says so rather than leaving you
 to wonder which model produced it:
 
-![The same question, placed on local-fast](docs/assets/screenshots/ask-placed-local-fast.jpg)
+| Placed on `local-gpu` | Same question, policy permits only `local-fast` |
+|---|---|
+| ![An answer with its placement: class internal, ran on local-gpu, one turn, 5.5s](docs/assets/screenshots/ask-placed-local-gpu.jpg) | ![The same question, placed on local-fast](docs/assets/screenshots/ask-placed-local-fast.jpg) |
 
 And with nothing the policy permits available, the outcome the whole design is
 for. Not a fallback, not a degraded answer from somewhere else:
@@ -530,6 +511,38 @@ an origin that could also rewrite the policy would hold every permission the
 perimeter exists to withhold, so the write routes refuse anything but this
 machine.
 
+## Optional: send it work from Agents Studio
+
+A machine you own can take jobs from [Agents Studio](https://studio.akaion.com):
+someone in your organisation picks the machine, writes the task and closes the
+browser. The machine dials out for work, runs it under **its own** policy on its
+own models, and sends back only what that policy allows. Nothing talks to Studio
+until you enroll, and either side can end it.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/link-dark.svg">
+  <img alt="Agents Studio and your machine. The machine, running annona link serve, claims work over outbound HTTPS every few seconds and sends back what its policy allows. Studio shows Completed when the answer goes back, Kept on machine when it stays in the local inbox, Failed when the policy held the run, and Cancelled." src="docs/assets/diagrams/link-light.svg">
+</picture>
+</p>
+
+Four jobs sent from Studio to a MacBook on the Akaion organisation, run on its
+`qwen2.5:7b`: a public question comes back; a letter carrying a *codice fiscale*
+**stays on the machine** (Studio never receives the answer); one cancelled while
+running; one sent with the local model switched off, which the policy **held**
+rather than reroute:
+
+![Agents Studio, Machines: the MacBook online with qwen2.5:7b on-prem restricted; four jobs — Failed (local model off), Cancelled, Kept on machine (codice fiscale), Completed (public question)](docs/assets/screenshots/studio-link-outcomes.jpg)
+
+```bash
+annona link enroll ann_enr_… --name dgx1   # the code from Studio → Machines → Add machine
+annona link serve                           # or as a service; outbound HTTPS only
+make verify-link ORG=<uuid>                 # seven checks against the real Studio, then revoke
+```
+
+The whole story — what crosses the wire, the release ceiling, running it
+detached on a DGX Spark — is in [Link a machine to Agents Studio](docs/getting-started/link.md).
+
 ## Where it runs
 
 Three topologies, **one binary, one release**. They differ in configuration —
@@ -552,7 +565,10 @@ On a **DGX Spark** the appliance runs Annona and vLLM under one compose file
 Two things appliance vendors usually skip, stated up front: every image must be
 `linux/arm64` + CUDA 13 — x86 images silently do not run on a GB10, so the
 release matrix builds and tests both — and the real ceiling is memory bandwidth,
-not the 128 GB. See [`deploy/README.md`](deploy/README.md) and
+not the 128 GB. An AMD **Ryzen AI Max** (Strix Halo) box takes the same compose file with the
+AMD overlay; `make up` picks the right one, and [Hardware](docs/reference/hardware.md)
+says which model fits and what has actually run where.
+See [`deploy/README.md`](deploy/README.md) and
 [HLD §7.2](docs/design/hld.md#72-the-appliance-on-a-dgx-spark), including what
 GPU attestation does *not* buy you on that hardware.
 
