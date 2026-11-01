@@ -120,7 +120,7 @@ class PermissionManager:
         # Controlla denied commands
         for denied in self.denied_commands:
             if self._match_pattern(command, denied) or cmd_base == denied:
-                logger.warning(f"Permission denied: command '{command}' is denied")
+                logger.warning(f"Permission denied: command '{cmd_base}' is denied")
                 return False
 
         # Controlla allowed commands
@@ -129,7 +129,7 @@ class PermissionManager:
                 if self._match_pattern(command, allowed) or cmd_base == allowed:
                     return True
 
-            logger.warning(f"Permission denied: command '{command}' not in allowed list")
+            logger.warning(f"Permission denied: command '{cmd_base}' not in allowed list")
             return False
 
         # Se non ci sono allowed_commands, permetti tutto (eccetto denied)

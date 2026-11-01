@@ -44,11 +44,11 @@ runner:
   mode: daemon
   max_concurrent_tasks: 3
   retry_attempts: 3
-  capture_to_brain: true          # save every executed task as a local note
+  capture_to_brain: true          # save every executed task as a local note (its text included)
 
 logging:
   level: INFO
-  file: logs/runner.log
+  file: logs/annona.log          # under $ANNONA_HOME; never the text of a step
 ```
 
 ## Permissions

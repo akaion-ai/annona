@@ -18,6 +18,7 @@ from typing import Any
 from loguru import logger
 
 from runner.kernel.blocks import tool_spec_from_schema
+from runner.kernel.logtext import shown
 from runner.kernel.types import ToolCall, ToolResult, ToolSpec
 
 __all__ = ["PermissionGate", "RegistryToolExecutor"]
@@ -46,7 +47,11 @@ class RegistryToolExecutor:
         return tuple(tool_spec_from_schema(s) for s in self._registry.get_all_schemas())
 
     def invoke(self, call: ToolCall) -> ToolResult:
-        logger.info(f"Executing tool: {call.name} {dict(call.arguments)}")
+        # The name and which arguments, not their values: a path or a query is
+        # the step's material as much as the prompt is (#37).
+        logger.info(
+            f"Executing tool: {call.name}({', '.join(call.arguments)}) {shown(call.arguments)}"
+        )
 
         if not self._registry:
             return ToolResult(
