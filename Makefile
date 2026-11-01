@@ -65,6 +65,9 @@ run: ## Start the daemon and local UI on 127.0.0.1:7070
 verify: ## Acceptance run against a local model: placement, leak rate, ledger
 	$(PY) deploy/verify_appliance.py --model $${ANNONA_LIVE_MODEL:-qwen2.5:14b}
 
+verify-link: ## The link to Agents Studio, end to end: ORG=<uuid>, ANNONA_STUDIO_TOKEN in the env
+	$(PY) deploy/verify_link.py --org $(ORG) --model $${ANNONA_LIVE_MODEL:-qwen2.5:7b}
+
 image: ## Build the container image for this machine's architecture
 	docker build -t annona:dev .
 

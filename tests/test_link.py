@@ -281,6 +281,39 @@ def test_a_released_answer_goes_back_with_who_asked_in_the_ledger(policy_file: P
     assert verify_file(ledger).ok
 
 
+def test_the_heartbeat_says_what_machine_it_is_and_nothing_about_its_people(policy_file: Path):
+    host = worker(policy_file, enforced("x")).report()["host"]
+    assert set(host) == {"os", "arch", "chip", "accelerator", "model_memory_gb"}
+    assert Path.home().name not in json.dumps(host)
+
+
+def test_a_run_the_perimeter_held_is_not_reported_as_completed(policy_file: Path):
+    """Studio showed a green "completed" over an empty answer (#38, over the link)."""
+
+    def held(instruction, cancelled, skill=None):
+        return {
+            "response": "",
+            "placement": {
+                "class": "restricted",
+                "outcome": "held",
+                "substrate": "",
+                "reason": "no permitted substrate is available",
+            },
+            "sealed": "",
+        }
+
+    body = worker(policy_file, held).run_job(JOB)
+
+    assert body["status"] == "failed"
+    assert body["error"] == "held by this machine's policy: no permitted substrate is available"
+    assert "response" not in body
+    outcomes = [
+        e.outcome for e in read_entries(policy_file.parent / "ledger.jsonl") if e.kind == "link"
+    ]
+    assert outcomes == ["received", "held"]
+    assert not (policy_file.parent / "link" / "inbox").exists(), "nothing ran, nothing to keep"
+
+
 def test_a_restricted_run_is_withheld_and_its_answer_never_leaves(policy_file: Path):
     secret_answer = f"La pratica di {FISCAL_CODE} scade il 15 marzo"
     body = worker(policy_file, enforced(secret_answer, klass="restricted")).run_job(JOB)
