@@ -701,13 +701,19 @@ class LinkWorker:
         }
 
     def serve(self, stop: threading.Event) -> None:
-        """Poll until ``stop`` is set or the credential is revoked."""
+        """Poll until ``stop`` is set or the credential is revoked.
+
+        Revocation raises ``LinkRevokedError`` whichever thread sees it first:
+        if the heartbeat does, the poll loop ends and raises it here.
+        """
+        revoked: list[LinkRevokedError] = []
 
         def heartbeats() -> None:
             while not stop.is_set():
                 try:
                     self.beat_once()
-                except LinkRevokedError:
+                except LinkRevokedError as exc:
+                    revoked.append(exc)
                     stop.set()
                 except Exception as exc:  # noqa: BLE001 — the network comes and goes
                     logger.warning(f"link heartbeat failed: {exc}")
@@ -756,3 +762,5 @@ class LinkWorker:
                     logger.warning(f"link result not delivered ({exc}); attempt {attempt + 1}/5")
                     stop.wait(min(2**attempt, 30))
             logger.info(f"link: job {job['id']} → {body['status']}")
+        if revoked:
+            raise revoked[0]

@@ -176,6 +176,18 @@ def test_a_401_means_revoked():
         client.claim()
 
 
+def test_serve_raises_revoked_when_the_heartbeat_sees_it_first(policy_file: Path):
+    """The CLI and verify-link both wait for the exception; a quiet return hid it."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/heartbeat"):
+            return httpx.Response(401, json={"detail": "revoked"})
+        return httpx.Response(200, json={"job": None})
+
+    with pytest.raises(LinkRevokedError):
+        worker(policy_file, lambda **_: {}, handler).serve(threading.Event())
+
+
 # ── What may go back ─────────────────────────────────────────────────────────
 
 
