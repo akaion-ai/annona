@@ -8,6 +8,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from runner import __version__
+
 console = Console()
 
 # Akaion brand colors
@@ -68,7 +70,7 @@ def print_runner_banner():
     subtitle = Text()
     subtitle.append("🛡️  ", style="bold")
     subtitle.append(f"{branding.CATEGORY} ", style=f"bold {ANNONA_ACCENT}")
-    subtitle.append("v0.1.0", style="dim")
+    subtitle.append(f"v{__version__}", style="dim")
     subtitle.append("  ·  ", style="dim white")
     subtitle.append(branding.TAGLINE, style=f"italic {AKAION_BLUE}")
 
@@ -91,7 +93,7 @@ def print_runner_box():
         text,
         border_style=AKAION_CYAN,
         padding=(1, 2),
-        title="[bold cyan]v0.1.0[/bold cyan]",
+        title=f"[bold cyan]v{__version__}[/bold cyan]",
         subtitle="[dim]🔗 Connected to Cloud[/dim]",
     )
 

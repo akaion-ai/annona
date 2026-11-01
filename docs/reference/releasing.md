@@ -11,17 +11,19 @@ Cross-platform bundles are built by `.github/workflows/release.yml`, which runs
 
 ### 1. Bump the version
 
-These must match, or the bundles come out with inconsistent names:
+These must match, or the bundles come out with inconsistent names
+(`tests/test_version.py` fails if they do not):
 
+- `runner/__init__.py` → `__version__` — the Python package; `pyproject.toml`
+  reads it from here, and the banner, `annona version` and `/health` import it
 - `ui/package.json` → `version`
 - `ui/src-tauri/Cargo.toml` → `[package] version`
 - `ui/src-tauri/tauri.conf.json` → `version`
-- `pyproject.toml` → `[project] version`
 
 ### 2. Tag and push
 
 ```bash
-git add ui/package.json ui/src-tauri/Cargo.toml ui/src-tauri/tauri.conf.json pyproject.toml
+git add ui/package.json ui/src-tauri/Cargo.toml ui/src-tauri/tauri.conf.json runner/__init__.py
 git commit -m "release: v0.2.0"
 git tag v0.2.0
 git push origin main --tags
