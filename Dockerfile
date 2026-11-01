@@ -18,9 +18,9 @@
 #     digest runs in an air-gapped rack and in a cloud tenant.
 #
 # Build:
-#   docker buildx build --platform linux/arm64,linux/amd64 -t annona:0.1.0 .
+#   docker buildx build --platform linux/arm64,linux/amd64 -t annona:local .
 # Run:
-#   docker run --rm -p 7070:7070 -v annona-home:/home/annona/.annona annona:0.1.0
+#   docker run --rm -p 7070:7070 -v annona-home:/home/annona/.annona annona:local
 
 # ── Stage 1: build the wheel ──────────────────────────────────────────────────
 FROM python:3.12-slim AS build

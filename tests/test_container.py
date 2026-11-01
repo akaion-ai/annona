@@ -248,8 +248,10 @@ def test_an_unreachable_substrate_is_reported_as_down_not_assumed_up(volume):
 
 
 def test_the_image_reports_its_own_version(volume):
+    from runner import __version__
+
     result = docker("run", "--rm", IMAGE, "version")
-    assert "0.1.0" in result.stdout
+    assert f"Version: {__version__}" in result.stdout  # it said 0.1.0 at 0.1.3 (#43)
 
 
 def test_the_healthcheck_is_declared_on_the_image():
