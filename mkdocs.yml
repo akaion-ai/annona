@@ -49,7 +49,7 @@ nav:
       - Quickstart: getting-started/quickstart.md
       - Configuration: getting-started/configuration.md
       - Turning the perimeter on: getting-started/perimeter.md
-      - Linking a machine to Agents Studio: getting-started/link.md
+      - Linking a machine to Agents Studio (optional): getting-started/link.md
       - Executing for a cloud app: cloud-execution.md
       - Opening it on macOS: getting-started/macos-gatekeeper.md
   - Design:

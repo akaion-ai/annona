@@ -149,6 +149,13 @@ For UI development with hot reload against the real sidecar:
 Windows and Linux bundles are produced by CI rather than locally — see
 [Releasing](../reference/releasing.md).
 
+## 6. Take work from Agents Studio — optional
+
+To let people in your organisation send jobs from Agents Studio to this machine,
+which runs them under its own policy and sends back only what the policy allows,
+see [Link a machine to Agents Studio](link.md). Nothing talks to Studio until
+you enroll.
+
 ## Where to go next
 
 - [Configuration](configuration.md) — every key, and what the policy really does
