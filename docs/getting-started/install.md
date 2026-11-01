@@ -272,7 +272,21 @@ not as it is written:
 **The app.** Drag `Annona.app` to the Trash (macOS), uninstall from Settings
 (Windows), or delete the AppImage / `sudo dpkg -r annona` (Linux).
 
-**The CLI.** `pip uninstall annona`
+**The CLI.** `pip uninstall annona` (or `pipx uninstall annona`).
+
+**A checkout installed with the old `install.sh`.** That script, and the
+`uninstall.sh` and `install-remote.sh` beside it, came from the project's
+*Akaion Runner* days and were removed after 0.1.3: the uninstaller deleted every
+line mentioning `~/.local/bin` from `.bashrc`, `.zshrc` and `config.fish`,
+including the ones `uv`, `pipx` and other tools rely on (#41). By hand:
+
+```bash
+rm ~/.local/bin/akaion          # the wrapper it wrote
+rm -rf <the checkout>/env       # the virtualenv it made
+```
+
+It also appended `export PATH="$HOME/.local/bin:$PATH"` to your shell's rc
+file. Leave it: other tools install there, and nothing in it is Annona's.
 
 **Your data.** Neither of those touches it. The policy, the ledger and the vault
 are yours, and they stay:
