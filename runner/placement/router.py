@@ -28,12 +28,13 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping
+from dataclasses import replace
 
 from loguru import logger
 
 from runner.audit.ledger import Ledger
 from runner.audit.metrics import METRICS
-from runner.kernel.blocks import block_text, media_path, text_block
+from runner.kernel.blocks import block_text, media_path, text_block, with_material
 from runner.kernel.errors import BackendUnavailableError, PlacementHeldError
 from runner.kernel.types import (
     Capabilities,
@@ -50,7 +51,7 @@ from runner.placement.engine import PlacementDecisionEngine
 from runner.placement.registry import SubstrateRegistry
 from runner.policy.classifier import PolicyClassifier, WorkingSet, paths_in_text
 from runner.policy.models import Policy, normalise_path
-from runner.policy.redaction import Redaction, Redactor, class_for_labels, restore
+from runner.policy.redaction import Redaction, Redactor, class_for_labels, renumber, restore
 
 __all__ = ["BRIEF_SYSTEM_PROMPT", "RoutingBackend"]
 
@@ -528,10 +529,8 @@ class RoutingBackend:
             self._record(held, request, kind="egress")
             raise PlacementHeldError(held.reason, held)
 
-        payload = self._render(request)
-
         try:
-            redaction = self._redactor.analyse(payload)
+            redacted_request, redaction = self._redact(request)
         except BackendUnavailableError as exc:
             if self._policy.redaction.fails_closed:
                 held = Placement(
@@ -628,14 +627,6 @@ class RoutingBackend:
             },
         )
 
-        redacted_request = CompletionRequest(
-            system=request.system,
-            transcript=(Turn(role="user", blocks=(text_block(redaction.text),)),),
-            tools=request.tools,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            model=request.model,
-        )
         self._egress_noted = True
         try:
             completion = self._call(onward.substrate, redacted_request)
@@ -643,6 +634,43 @@ class RoutingBackend:
             self._egress_noted = False
 
         return self._reidentify(completion, redaction)
+
+    def _redact(self, request: CompletionRequest) -> tuple[CompletionRequest, Redaction]:
+        """The request with its material redacted and its shape untouched (#40).
+
+        Each piece — the system prompt, every text, every tool result, every
+        argument value — goes to the redactor on its own, and comes back in the
+        block it came from: roles, call ids, tool names and error flags are not
+        material and are never sent to the detector. The returned ``Redaction``
+        covers the whole request: its text is what will cross, rendered exactly
+        as the classifier reads any request, and its mapping is run-wide.
+
+        The system prompt is material too: it carries the run's context, and it
+        used to cross *unredacted* while its redacted copy was what got
+        reclassified.
+        """
+        mapping: dict[str, str] = {}
+        labels: dict[str, int] = {}
+        redactor = self._redactor
+        assert redactor is not None  # checked by the caller
+
+        def clean(text: str) -> str:
+            if not text.strip():
+                return text
+            part = redactor.analyse(text)
+            for label, count in part.labels.items():
+                labels[label] = labels.get(label, 0) + count
+            return renumber(part, mapping)
+
+        redacted = replace(
+            request,
+            system=clean(request.system),
+            transcript=tuple(
+                Turn(role=turn.role, blocks=tuple(with_material(b, clean) for b in turn.blocks))
+                for turn in request.transcript
+            ),
+        )
+        return redacted, Redaction(text=self._render(redacted), mapping=mapping, labels=labels)
 
     def _reidentify(self, completion: Completion, redaction: Redaction) -> Completion:
         """Put the real values back into the answer, here and nowhere else."""

@@ -45,6 +45,7 @@ __all__ = [
     "RedactionPolicy",
     "Redactor",
     "class_for_labels",
+    "renumber",
     "restore",
 ]
 
@@ -202,3 +203,33 @@ def unresolved_placeholders(text: str, mapping: Mapping[str, str]) -> tuple[str,
     """
     found = {f"[{label}_{index}]" for label, index in PLACEHOLDER_PATTERN.findall(text)}
     return tuple(sorted(found - set(mapping)))
+
+
+def renumber(part: Redaction, mapping: dict[str, str]) -> str:
+    """Fold one piece's placeholders into a run-wide ``mapping``; return its text.
+
+    A request is redacted piece by piece — the system prompt, each message, each
+    tool result — so that its shape survives (#40). Each piece is numbered on its
+    own, though: two pieces can both say ``[FULLNAME_1]`` about different people,
+    or name the same person differently. Here the same value always gets the same
+    placeholder, and a placeholder already taken by another value gets the next
+    free index of its label. ``mapping`` is updated in place.
+    """
+    by_value = {value: placeholder for placeholder, value in mapping.items()}
+    rename: dict[str, str] = {}
+    for placeholder, value in part.mapping.items():
+        target = by_value.get(value)
+        if target is None:
+            target = placeholder
+            if target in mapping:
+                shape = PLACEHOLDER_PATTERN.fullmatch(placeholder)
+                label = shape.group(1) if shape else "ID"
+                index = 1
+                while f"[{label}_{index}]" in mapping:
+                    index += 1
+                target = f"[{label}_{index}]"
+            mapping[target] = value
+            by_value[value] = target
+        rename[placeholder] = target
+    # One pass, so renaming [CF_1] to [CF_2] cannot then rename that [CF_2].
+    return PLACEHOLDER_PATTERN.sub(lambda m: rename.get(m.group(0), m.group(0)), part.text)

@@ -14,6 +14,7 @@ import pytest
 
 from runner.agent.loop import AgentLoop
 from runner.capability.redactors.rizzo_pii import DEFAULT_LABEL_CLASSES, RizzoPiiRedactor
+from runner.kernel.blocks import block_text, function_call_block, function_result_block, text_block
 from runner.kernel.errors import BackendUnavailableError, PlacementHeldError, PolicyError
 from runner.kernel.types import (
     Capabilities,
@@ -21,12 +22,16 @@ from runner.kernel.types import (
     CompletionRequest,
     SensitivityClass,
     ToolCall,
+    ToolResult,
+    ToolSpec,
+    Turn,
 )
 from runner.policy.loader import parse_policy
 from runner.policy.redaction import (
     Redaction,
     RedactionPolicy,
     class_for_labels,
+    renumber,
     restore,
     unresolved_placeholders,
 )
@@ -269,21 +274,40 @@ def test_redaction_defaults_to_failing_closed():
 
 
 # ── End to end, through the router ────────────────────────────────────────────
+#
+# Internal material: a name and no codice fiscale. A CF classifies the text
+# restricted, and this policy redacts only internal — which the router now sees,
+# because the material reaches it instead of an empty transcript.
+
+ASKED = "Il Sig. Mario Rossi chiede una proroga."
+ASKED_REDACTED = "Il Sig. [FULLNAME_1] chiede una proroga."
+REQUEST = CompletionRequest(system="", transcript=(Turn(role="user", blocks=(text_block(ASKED),)),))
 
 
 class FakeRedactor:
+    """Replaces the two identifiers of REAL wherever they appear, numbering per call
+    as a real detector does — or returns a fixed ``redaction`` for every piece."""
+
     name = "fake-pii"
 
     def __init__(self, redaction: Redaction | None = None, raises=None):
-        self.redaction = redaction or Redaction(text=REDACTED, mapping=MAPPING, labels={"CF": 1})
+        self.redaction = redaction
         self.raises = raises
         self.calls = 0
+        self.seen: list[str] = []
 
     def analyse(self, text: str) -> Redaction:
         self.calls += 1
+        self.seen.append(text)
         if self.raises:
             raise self.raises
-        return self.redaction
+        if self.redaction is not None:
+            return self.redaction
+        mapping = {p: v for p, v in MAPPING.items() if v in text}
+        for placeholder, value in mapping.items():
+            text = text.replace(value, placeholder)
+        labels = {p.strip("[]").rsplit("_", 1)[0]: 1 for p in mapping}
+        return Redaction(text=text, mapping=mapping, labels=labels)
 
 
 class Wiretap:
@@ -337,19 +361,16 @@ def test_a_restricted_payload_crosses_only_after_its_identifiers_are_replaced(tm
     redactor = FakeRedactor()
     enforcement, frontier = build(tmp_path, redactor=redactor)
 
-    completion = enforcement.backend().complete(
-        CompletionRequest(system="", transcript=(), tools=())
-    )
+    completion = enforcement.backend().complete(REQUEST)
 
     assert redactor.calls == 1
-    assert frontier.received == [REDACTED]
-    assert "RSSMRA85T10A562S" not in frontier.received[0]
+    assert frontier.received == [ASKED_REDACTED]
     assert "Mario Rossi" not in frontier.received[0]
     assert completion.text == "the deadline is in March"
 
     entry = enforcement.ledger.entries()[-1]
     assert entry.outcome == "redacted"
-    assert entry.detail["redacted"] == {"CF": 1}
+    assert entry.detail["redacted"] == {"FULLNAME": 1}
     assert "Mario Rossi" not in enforcement.ledger.path.read_text()
 
 
@@ -362,7 +383,7 @@ def test_the_answer_is_re_identified_locally(tmp_path):
         frontier=Wiretap(reply="Il Sig. [FULLNAME_1] ha tempo fino al 15 marzo."),
     )
 
-    completion = enforcement.backend().complete(CompletionRequest(system="", transcript=()))
+    completion = enforcement.backend().complete(REQUEST)
     assert completion.text == "Il Sig. Mario Rossi ha tempo fino al 15 marzo."
 
 
@@ -378,7 +399,7 @@ def test_placeholders_inside_tool_arguments_are_re_identified_too(tmp_path):
             )
 
     enforcement, _ = build(tmp_path, redactor=FakeRedactor(), frontier=CallingFrontier())
-    completion = enforcement.backend().complete(CompletionRequest(system="", transcript=()))
+    completion = enforcement.backend().complete(REQUEST)
 
     assert completion.tool_calls[0].arguments == {"who": "Mario Rossi"}
 
@@ -399,7 +420,7 @@ def test_a_redaction_that_leaves_an_identifier_behind_is_held(tmp_path):
     enforcement, frontier = build(tmp_path, redactor=leaky)
 
     with pytest.raises(PlacementHeldError, match="still restricted"):
-        enforcement.backend().complete(CompletionRequest(system="", transcript=()))
+        enforcement.backend().complete(REQUEST)
 
     assert frontier.received == []
 
@@ -420,7 +441,7 @@ def test_a_canary_surviving_redaction_is_held(tmp_path):
     enforcement.working_set.observe("seed", RESTRICTED)
 
     with pytest.raises(PlacementHeldError):
-        enforcement.backend().complete(CompletionRequest(system="", transcript=()))
+        enforcement.backend().complete(REQUEST)
 
 
 def test_a_redactor_outage_holds_the_step_by_default(tmp_path):
@@ -432,7 +453,7 @@ def test_a_redactor_outage_holds_the_step_by_default(tmp_path):
     )
 
     with pytest.raises(PlacementHeldError, match="redactor is unavailable"):
-        enforcement.backend().complete(CompletionRequest(system="", transcript=()))
+        enforcement.backend().complete(REQUEST)
 
     assert frontier.received == []
 
@@ -452,7 +473,7 @@ def test_with_on_error_ignore_the_outage_is_not_silently_swallowed(tmp_path):
     enforcement.working_set.observe("seed", RESTRICTED)
 
     with pytest.raises(BackendUnavailableError):
-        enforcement.backend().complete(CompletionRequest(system="", transcript=()))
+        enforcement.backend().complete(REQUEST)
 
 
 def test_the_run_still_works_through_the_real_loop(tmp_path):
@@ -468,7 +489,131 @@ def test_the_run_still_works_through_the_real_loop(tmp_path):
     enforcement, frontier = build(tmp_path, redactor=FakeRedactor())
 
     loop = AgentLoop(enforcement.backend(), enforcement.executor(Tools()), enforcement.gate())
-    result = loop.run("riassumi la pratica")
+    result = loop.run(ASKED)
 
     assert result.response == "the deadline is in March"
-    assert frontier.received == [REDACTED]
+    assert frontier.received[0].endswith(ASKED_REDACTED)
+
+
+# ── The shape of the conversation survives redaction (#40) ────────────────────
+#
+# The router used to flatten the whole request into one user message and redact
+# that: tool calls turned into prose, "Permission denied" lost its error flag,
+# the detector took the tool name `filesystem` for a person, and the model asked
+# for the same tool until the turn limit. Only material is redacted now.
+
+NAMES = ("Mario Rossi", "Anna Bianchi")
+
+
+class NumberingRedactor:
+    """Numbers names per call from 1, as a real detector does on each piece."""
+
+    name = "numbering"
+
+    def __init__(self):
+        self.seen: list[str] = []
+
+    def analyse(self, text: str) -> Redaction:
+        self.seen.append(text)
+        mapping = {}
+        for name in NAMES:
+            if name in text:
+                placeholder = f"[FULLNAME_{len(mapping) + 1}]"
+                mapping[placeholder] = name
+                text = text.replace(name, placeholder)
+        return Redaction(text=text, mapping=mapping, labels={"FULLNAME": len(mapping)})
+
+
+class RecordingFrontier(Wiretap):
+    def __init__(self):
+        super().__init__()
+        self.requests: list[CompletionRequest] = []
+
+    def complete(self, request):
+        self.requests.append(request)
+        return super().complete(request)
+
+
+def _conversation() -> CompletionRequest:
+    call = ToolCall(id="call_1", name="filesystem", arguments={"path": "~/Clienti/Mario Rossi"})
+    return CompletionRequest(
+        system='Context: {"cliente": "Anna Bianchi"}',
+        transcript=(
+            Turn(role="user", blocks=(text_block("Leggi la pratica di Mario Rossi."),)),
+            Turn(role="assistant", blocks=(function_call_block(call),)),
+            Turn(
+                role="user",
+                blocks=(
+                    function_result_block(
+                        ToolResult(
+                            call_id="call_1",
+                            name="filesystem",
+                            content="Permission denied",
+                            is_error=True,
+                        )
+                    ),
+                ),
+            ),
+        ),
+        tools=(ToolSpec(name="filesystem", description="read files", schema={}),),
+    )
+
+
+def _sent(tmp_path) -> tuple[CompletionRequest, NumberingRedactor]:
+    frontier, redactor = RecordingFrontier(), NumberingRedactor()
+    enforcement, _ = build(tmp_path, redactor=redactor, frontier=frontier)
+    enforcement.backend().complete(_conversation())
+    return frontier.requests[0], redactor
+
+
+def test_roles_calls_and_errors_cross_as_they_were(tmp_path):
+    sent, _ = _sent(tmp_path)
+
+    assert [turn.role for turn in sent.transcript] == ["user", "assistant", "user"]
+    call = sent.transcript[1].blocks[0]
+    assert (call.id, call.name) == ("call_1", "filesystem")
+    result = sent.transcript[2].blocks[0]
+    assert result.result == "Permission denied" and result.is_error is True
+    assert [tool.name for tool in sent.tools] == ["filesystem"]
+
+
+def test_only_material_reaches_the_detector(tmp_path):
+    _, redactor = _sent(tmp_path)
+
+    assert "filesystem" not in redactor.seen  # a tool's name is not a person
+    assert "call_1" not in redactor.seen
+    assert not any("object at 0x" in piece for piece in redactor.seen)
+    assert "~/Clienti/Mario Rossi" in redactor.seen  # an argument's value is material
+
+
+def test_nothing_identifying_crosses_the_system_prompt_included(tmp_path):
+    """The system prompt carries the run's context, and used to cross unredacted
+    while its redacted copy was what got reclassified."""
+    sent, _ = _sent(tmp_path)
+
+    assert "Anna Bianchi" not in sent.system
+    for turn in sent.transcript:
+        for block in turn.blocks:
+            assert "Mario Rossi" not in block_text(block)
+
+
+def test_one_person_one_placeholder_across_pieces(tmp_path):
+    """Each piece is numbered from 1; the request as a whole must not be."""
+    sent, _ = _sent(tmp_path)
+
+    assert sent.system == 'Context: {"cliente": "[FULLNAME_1]"}'  # Anna, first seen
+    assert block_text(sent.transcript[0].blocks[0]) == "Leggi la pratica di [FULLNAME_2]."
+    assert sent.transcript[1].blocks[0].arguments == {"path": "~/Clienti/[FULLNAME_2]"}
+
+
+def test_renumber_keeps_values_apart_and_together():
+    mapping: dict[str, str] = {}
+    first = Redaction(text="[FULLNAME_1] e [CF_1]", mapping={"[FULLNAME_1]": "Anna", "[CF_1]": "X"})
+    second = Redaction(
+        text="[FULLNAME_1] scrive a [FULLNAME_2]",
+        mapping={"[FULLNAME_1]": "Mario", "[FULLNAME_2]": "Anna"},
+    )
+
+    assert renumber(first, mapping) == "[FULLNAME_1] e [CF_1]"
+    assert renumber(second, mapping) == "[FULLNAME_2] scrive a [FULLNAME_1]"
+    assert mapping == {"[FULLNAME_1]": "Anna", "[CF_1]": "X", "[FULLNAME_2]": "Mario"}

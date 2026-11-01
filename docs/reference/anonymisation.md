@@ -90,6 +90,27 @@ It is never written to the ledger. The ledger holds digests and counts on
 purpose: a tamper-evident record of what was sent would be a second copy of the
 material, with a longer life than the run.
 
+### What is redacted, and what is not
+
+Material is redacted; the shape of the conversation is not. Each piece goes to
+the redactor on its own — the system prompt (it carries the run's context), every
+message, every tool result, every value of a tool call's arguments — and comes
+back in the block it came from. Roles, call ids, tool names and the flag that
+says a tool call failed are never sent to the detector and cross as they were,
+so a model that was told `Permission denied` still knows it was.
+
+The same person gets the same placeholder in every piece: `[FULLNAME_1]` in the
+system prompt and `[FULLNAME_1]` in a tool result are one person, and a second
+person is `[FULLNAME_2]` wherever they appear.
+
+An image or a scanned document cannot be redacted, so on this route it crosses
+as its path, never as its pixels.
+
+Up to 0.1.3 the whole request was flattened into one message and redacted as
+text. Tool calls became prose, `filesystem` was taken for a person, the model
+re-requested the same tool until the turn limit — and the system prompt crossed
+**unredacted**, while the redacted copy was what got reclassified (#40).
+
 ## What redaction still does not fix
 
 Even a perfectly redacted payload tells the provider:
