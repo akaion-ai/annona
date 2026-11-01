@@ -133,18 +133,12 @@ def status_cmd():
     console.print(f"{rule}: [bold]{ceiling.label if ceiling else 'none — metadata only'}[/bold]")
 
 
-@link_app.command("serve")
-def serve_cmd():
-    """Poll Studio for work and run it through the perimeter. Ctrl-C to stop."""
-    try:
-        config = LinkConfig.load()
-        if config is None:
-            raise LinkError("not enrolled: run `annona link enroll <code> --name …` first")
-        load_policy(policy_path())  # no perimeter, no remote work
-    except Exception as exc:  # noqa: BLE001
-        console.print(f"❌ [red]{exc}[/red]")
-        raise typer.Exit(1) from None
+def local_run():
+    """What a job runs: this machine's perimeter, its tools and its model.
 
+    One function for `annona link serve` and `deploy/verify_link.py`, so the
+    acceptance run exercises the path real jobs take rather than a copy of it.
+    """
     # Imported here: building the executor loads providers, and the other link
     # commands should not pay for it.
     from runner.config import ConfigManager  # noqa: PLC0415
@@ -175,6 +169,23 @@ def serve_cmd():
             prefetch=prefetch,
             cancel=cancelled,
         )
+
+    return run
+
+
+@link_app.command("serve")
+def serve_cmd():
+    """Poll Studio for work and run it through the perimeter. Ctrl-C to stop."""
+    try:
+        config = LinkConfig.load()
+        if config is None:
+            raise LinkError("not enrolled: run `annona link enroll <code> --name …` first")
+        load_policy(policy_path())  # no perimeter, no remote work
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"❌ [red]{exc}[/red]")
+        raise typer.Exit(1) from None
+
+    run = local_run()
 
     stop = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())

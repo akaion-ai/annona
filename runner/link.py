@@ -389,6 +389,15 @@ def _decision_summary(entries: list[Any], *, with_reasons: bool) -> list[dict[st
     return out
 
 
+def _host() -> dict[str, str]:
+    from runner.services.host import machine, model_memory_gb  # noqa: PLC0415
+
+    try:
+        return {**machine(), "model_memory_gb": f"{model_memory_gb():.0f}"}
+    except Exception:  # noqa: BLE001 — the heartbeat matters more than its detail
+        return {}
+
+
 class LinkWorker:
     """Claim a job, run it through the perimeter, report what the policy permits."""
 
@@ -477,6 +486,9 @@ class LinkWorker:
             "tools": tools,
             "busy": self._current is not None,
             "platform": platform.system().lower(),
+            # What Studio is sending work to: chip, where a model runs, memory.
+            # Hardware only — never a path, a hostname or a user name.
+            "host": _host(),
         }
 
     def beat_once(self) -> None:
@@ -591,6 +603,20 @@ class LinkWorker:
         if cancelled:
             self._record("cancelled", run_class, job)
             return {**body, "status": "cancelled"}
+        if placement.get("outcome") in ("held", "queued"):
+            # Nothing ran, so there is nothing to release or keep. Reported as
+            # completed, Studio showed a green tick over an empty answer (#38,
+            # over the link). Studio has no "held" status; "failed" with the
+            # policy's reason is the truthful one of the four it has. The
+            # reason names a rule and a substrate, never material.
+            outcome = str(placement["outcome"])
+            reason = str(placement.get("reason", ""))[:300]
+            self._record(outcome, run_class, job, reason=reason)
+            return {
+                **body,
+                "status": "failed",
+                "error": f"{outcome} by this machine's policy: {reason}",
+            }
         if released:
             self._record("released", run_class, job, reason=why)
             return {**body, "status": "completed", "response": response}
@@ -675,13 +701,19 @@ class LinkWorker:
         }
 
     def serve(self, stop: threading.Event) -> None:
-        """Poll until ``stop`` is set or the credential is revoked."""
+        """Poll until ``stop`` is set or the credential is revoked.
+
+        Revocation raises ``LinkRevokedError`` whichever thread sees it first:
+        if the heartbeat does, the poll loop ends and raises it here.
+        """
+        revoked: list[LinkRevokedError] = []
 
         def heartbeats() -> None:
             while not stop.is_set():
                 try:
                     self.beat_once()
-                except LinkRevokedError:
+                except LinkRevokedError as exc:
+                    revoked.append(exc)
                     stop.set()
                 except Exception as exc:  # noqa: BLE001 — the network comes and goes
                     logger.warning(f"link heartbeat failed: {exc}")
@@ -730,3 +762,5 @@ class LinkWorker:
                     logger.warning(f"link result not delivered ({exc}); attempt {attempt + 1}/5")
                     stop.wait(min(2**attempt, 30))
             logger.info(f"link: job {job['id']} → {body['status']}")
+        if revoked:
+            raise revoked[0]

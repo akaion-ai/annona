@@ -173,7 +173,7 @@ def main() -> int:
             else OpenAICompatibleBackend(model=args.model, endpoint=args.endpoint)
         )
 
-        print(f"\n  Annona appliance verification")
+        print("\n  Annona appliance verification")
         print(f"  {DIM}substrate: {args.kind} · {args.model} · {args.endpoint}{RESET}\n")
 
         frontier = Wiretap()
@@ -197,9 +197,7 @@ def main() -> int:
             max_iterations=4,
         )
 
-        checks.append(
-            ("the model called the tool", bool(tools.reads), "no tool call was made")
-        )
+        checks.append(("the model called the tool", bool(tools.reads), "no tool call was made"))
         checks.append(
             (
                 "reading a client file made the run restricted",
@@ -215,13 +213,14 @@ def main() -> int:
             )
         )
         leaks = [s for s in frontier.received if CANARY in s or FISCAL_CODE in s]
-        checks.append(("leak rate is zero", not leaks, f"{len(leaks)} payload(s) carried the canary"))
+        checks.append(
+            ("leak rate is zero", not leaks, f"{len(leaks)} payload(s) carried the canary")
+        )
         checks.append(
             (
                 "every inference was placed on-prem",
                 all(
-                    e.substrate in ("local-gpu", "local", "")
-                    for e in enforcement.ledger.entries()
+                    e.substrate in ("local-gpu", "local", "") for e in enforcement.ledger.entries()
                 ),
                 "an inference was placed off-prem",
             )

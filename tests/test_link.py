@@ -176,6 +176,18 @@ def test_a_401_means_revoked():
         client.claim()
 
 
+def test_serve_raises_revoked_when_the_heartbeat_sees_it_first(policy_file: Path):
+    """The CLI and verify-link both wait for the exception; a quiet return hid it."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/heartbeat"):
+            return httpx.Response(401, json={"detail": "revoked"})
+        return httpx.Response(200, json={"job": None})
+
+    with pytest.raises(LinkRevokedError):
+        worker(policy_file, lambda **_: {}, handler).serve(threading.Event())
+
+
 # ── What may go back ─────────────────────────────────────────────────────────
 
 
@@ -279,6 +291,39 @@ def test_a_released_answer_goes_back_with_who_asked_in_the_ledger(policy_file: P
     assert [e.outcome for e in link] == ["received", "released"]
     assert link[0].detail["requested_by"]["email"] == "ada@technoprobe.example"
     assert verify_file(ledger).ok
+
+
+def test_the_heartbeat_says_what_machine_it_is_and_nothing_about_its_people(policy_file: Path):
+    host = worker(policy_file, enforced("x")).report()["host"]
+    assert set(host) == {"os", "arch", "chip", "accelerator", "model_memory_gb"}
+    assert Path.home().name not in json.dumps(host)
+
+
+def test_a_run_the_perimeter_held_is_not_reported_as_completed(policy_file: Path):
+    """Studio showed a green "completed" over an empty answer (#38, over the link)."""
+
+    def held(instruction, cancelled, skill=None):
+        return {
+            "response": "",
+            "placement": {
+                "class": "restricted",
+                "outcome": "held",
+                "substrate": "",
+                "reason": "no permitted substrate is available",
+            },
+            "sealed": "",
+        }
+
+    body = worker(policy_file, held).run_job(JOB)
+
+    assert body["status"] == "failed"
+    assert body["error"] == "held by this machine's policy: no permitted substrate is available"
+    assert "response" not in body
+    outcomes = [
+        e.outcome for e in read_entries(policy_file.parent / "ledger.jsonl") if e.kind == "link"
+    ]
+    assert outcomes == ["received", "held"]
+    assert not (policy_file.parent / "link" / "inbox").exists(), "nothing ran, nothing to keep"
 
 
 def test_a_restricted_run_is_withheld_and_its_answer_never_leaves(policy_file: Path):

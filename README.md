@@ -628,6 +628,7 @@ and skip the third entirely. Details in
 | [Sovereign runtime](docs/design/sovereign-runtime.md) | the threat model in full |
 | [Research](docs/research/index.md) | what we are trying to prove, and the numbers |
 | [Turning the perimeter on](docs/getting-started/perimeter.md) | five minutes from install to watching it refuse |
+| [Link to Agents Studio](docs/getting-started/link.md) — optional | send jobs from Studio to a machine you own; it runs them under its own policy and returns only what that allows; `make verify-link` proves it |
 | [Skills](docs/skills.md) | the format, the pin, installing Claude's, writing your own |
 | [Deploying](deploy/README.md) | laptop, DGX Spark, your own tenant — and the acceptance run |
 | [Decisions](docs/adr/index.md) | why it is shaped this way, including the ones we reversed |
