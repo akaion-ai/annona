@@ -448,8 +448,9 @@ a runtime that is up with the model your policy names not pulled.
 ### As an appliance, with a real model
 
 ```bash
-docker compose up -d                                   # kernel + Ollama, arm64 or amd64
-docker compose exec annona-ollama ollama pull qwen2.5:14b
+make up                                                # kernel + Ollama, with this host's GPU
+docker compose exec annona annona doctor               # the machine, and the model that fits it
+docker compose exec ollama ollama pull qwen2.5:14b     # or what doctor said fits
 docker compose exec annona annona setup --yes --endpoint http://ollama:11434 --model qwen2.5:14b
 make verify                                            # the acceptance run
 ```

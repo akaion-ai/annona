@@ -71,13 +71,12 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    # No GPU here, on purpose: a reservation for NVIDIA made `docker compose up`
+    # fail on every machine without one — a Mac, a Ryzen AI Max box. The GPU is
+    # an overlay, chosen for the hardware (docs/reference/hardware.md):
+    #   docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d
+    #   docker compose -f docker-compose.yml -f docker-compose.amd.yml up -d
+    # `annona doctor` says when a model is loaded on the CPU anyway.
 
   # The appliance profile: vLLM on a DGX-class box. Same kernel image, same
   # policy schema, different substrate — which is the claim the project makes

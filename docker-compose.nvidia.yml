@@ -1,0 +1,15 @@
+# NVIDIA GPUs for the local model: discrete cards and the DGX Spark (GB10).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d
+#
+# Needs the NVIDIA Container Toolkit on the host (DGX OS ships it). The same
+# ollama image is multi-arch, so the GB10's arm64 + CUDA is this file too.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
