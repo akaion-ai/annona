@@ -24,7 +24,7 @@ load_dotenv()
 # Imported after load_dotenv() on purpose: these modules resolve service URLs and
 # configuration at import time, so the environment has to be populated first.
 # Moving them above load_dotenv() changes which backend the CLI talks to.
-from runner import branding  # noqa: E402
+from runner import __version__, branding  # noqa: E402
 from runner.auth import AuthManager, firebase_browser_login  # noqa: E402
 from runner.banner import print_simple_logo  # noqa: E402
 from runner.brain.manager import BrainManager  # noqa: E402
@@ -445,7 +445,7 @@ def version():
     """
     print_simple_logo()
     console.print()
-    console.print("Version: [green]0.1.0[/green]")
+    console.print(f"Version: [green]{__version__}[/green]")
     console.print("Python: [yellow]" + sys.version.split()[0] + "[/yellow]")
     console.print()
 

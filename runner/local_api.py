@@ -107,7 +107,7 @@ def create_app(
     cloud_enabled: bool = False,
     executor: Optional[object] = None,
 ) -> FastAPI:
-    app = FastAPI(title="Annona local API", version="0.1.0")
+    app = FastAPI(title="Annona local API", version=__version__)
 
     # Local origins are this app talking to itself and stay unauthenticated.
     app.add_middleware(
