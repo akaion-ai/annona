@@ -20,7 +20,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14            # Apple Silicon runner
+          # `macos-14` is retired on 2 November 2026 and was browned out before
+          # that: the v0.1.4 arm64 build was cancelled in its first second.
+          - os: macos-15            # Apple Silicon runner
             target: aarch64-apple-darwin
             pyinstaller-name: annona-aarch64-apple-darwin
           # Intel macOS: `macos-13` was retired in December 2025 and its label

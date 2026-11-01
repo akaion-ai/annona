@@ -83,3 +83,7 @@ jobs:
           path: dist/
 
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # A tag re-pushed to re-run the desktop build must not fail on the
+          # files PyPI already has: PyPI never lets a version be replaced anyway.
+          skip-existing: true
