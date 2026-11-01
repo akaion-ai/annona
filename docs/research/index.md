@@ -11,6 +11,10 @@ cost/privacy frontier**, and **a command they run themselves**.
 This document states what we are trying to prove, how we intend to measure it,
 and what is not built yet. Negative results are published here too.
 
+Before any paper: [related work](related-work.md) — what others have already published and the
+claim that survives it — and the [paper plan](paper-plan.md) — which numbers the code can produce
+today, which it cannot, and in what order to build them.
+
 **Where the programme stands.** Four of the six sections below have shipped: the
 policy kernel, privacy-constrained routing, the leak canary and the verifiable
 trace. What shipped is the *mechanism*; most of the *measurements* they exist to
