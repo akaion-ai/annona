@@ -116,6 +116,20 @@ annona cloud status
 Every command takes `--help`. `dogana` and `akaion` are aliases for `annona`,
 kept so older scripts keep working.
 
+`annona run --once` tells a script how the step ended, not only whether it
+raised:
+
+| exit | the step |
+| ---- | -------- |
+| `0` | completed |
+| `1` | failed: an error, printed |
+| `2` | was not started: a usage error (`--once` without `--task`) |
+| `3` | was **held** by the perimeter. Nothing ran and nothing left; `annona audit --held` says why |
+| `4` | was **queued**: a permitted substrate is down and the rule waits for it |
+
+A held step is the product working, but it is not finished work: a cron job
+that treats `3` as success has been told no and not noticed.
+
 ## Running the tests
 
 ```bash

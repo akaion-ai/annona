@@ -37,7 +37,7 @@ from runner.brain.models import (  # noqa: E402
 )
 from runner.cloud_client import MainBackendClient  # noqa: E402
 from runner.config import ConfigManager  # noqa: E402
-from runner.main import RunnerDaemon  # noqa: E402
+from runner.main import EXIT_CODES, RunnerDaemon, step_outcome  # noqa: E402
 from runner.service_urls import resolve_service_url  # noqa: E402
 from runner.sync.engine import SyncEngine  # noqa: E402
 
@@ -275,8 +275,18 @@ def run(
                 raise typer.Exit(2)
             console.print(f"🎯 [green]Executing task:[/green] {task}")
             result = runner.execute_once(task)
-            console.print(f"\n✅ Result: {result}")
+            # Done, held and queued are three outcomes with three exit codes: a
+            # script must not read a refusal as finished work (#38).
+            outcome, reason = step_outcome(result)
+            if outcome == "completed":
+                console.print(f"\n✅ Result: {result}")
+            else:
+                console.print(f"\n⛔ [yellow]{outcome.capitalize()}:[/yellow] {reason}")
+                console.print("   [dim]annona audit --held[/dim] shows the decision.")
+            raise typer.Exit(EXIT_CODES[outcome])
 
+    except typer.Exit:
+        raise
     except KeyboardInterrupt:
         console.print("\n👋 [yellow]Runner stopped by user[/yellow]")
         raise typer.Exit(0)
