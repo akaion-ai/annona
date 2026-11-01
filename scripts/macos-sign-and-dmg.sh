@@ -142,6 +142,22 @@ _notary_submit() {
   return "$rc"
 }
 
+# Fetch the ticket and attach it, retrying. `stapler` reads the ticket from
+# Apple's CloudKit, which drops connections (NSURLError -1005, "The validate
+# action failed! Error 68"): it failed the v0.1.4 build on both macOS runners
+# minutes after a successful notarisation. The ticket exists; asking again works.
+_staple() {
+  local target="$1" attempt
+  for attempt in 1 2 3 4 5; do
+    if xcrun stapler staple "$target" && xcrun stapler validate "$target"; then
+      return 0
+    fi
+    echo "::warning::stapling $target failed (attempt $attempt/5); retrying in $((attempt * 20))s"
+    sleep $((attempt * 20))
+  done
+  return 1
+}
+
 # Notarise an .app bundle.
 #
 # `notarytool submit` refuses a bundle: it takes a .zip, a .pkg or a .dmg, and
@@ -164,8 +180,7 @@ notarise_app() {
   _notary_submit "$staging/app.zip" || { rm -rf "$staging"; return 0; }
   rm -rf "$staging"
 
-  xcrun stapler staple "$app"
-  xcrun stapler validate "$app"
+  _staple "$app"
 }
 
 # Notarise a file notarytool already accepts — the dmg.
@@ -175,8 +190,7 @@ notarise_file() {
   _notary_submit "$file" || return 0
   # Stapling puts the ticket inside the file, so the first launch works on a
   # machine that is offline or behind a firewall that eats Apple's OCSP.
-  xcrun stapler staple "$file"
-  xcrun stapler validate "$file"
+  _staple "$file"
 }
 
 notarise_app "$APP"
