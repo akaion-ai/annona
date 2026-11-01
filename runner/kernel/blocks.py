@@ -18,7 +18,7 @@ job, not datapizza's.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +46,7 @@ __all__ = [
     "text_block",
     "tool_spec_from_schema",
     "turn",
+    "with_material",
 ]
 
 
@@ -160,6 +161,46 @@ def block_text(block: Block) -> str:
         return str(block)
     dump = getattr(content, "model_dump_json", None)
     return str(dump()) if callable(dump) else str(content)
+
+
+def with_material(block: Block, clean: Callable[[str], str]) -> Block:
+    """The same block with its material passed through ``clean``, its shape kept.
+
+    Material is what a person or a document put there: text, what a tool
+    returned, the values of a call's arguments. Shape is what keeps a transcript
+    a conversation: the call id, the tool's name, whether the call failed.
+    Redaction must change the first and never the second — flattening both into
+    one string turned tool calls into prose, lost "permission denied", and let
+    the detector take a tool's name for a person (#40).
+
+    A media block becomes its path, as text: pixels cannot be redacted, so they
+    do not cross this way.
+    """
+
+    def deep(value: Any) -> Any:
+        if isinstance(value, str):
+            return clean(value)
+        if isinstance(value, Mapping):
+            return {key: deep(item) for key, item in value.items()}
+        if isinstance(value, list | tuple):
+            return [deep(item) for item in value]
+        return value
+
+    path = media_path(block)
+    if path:
+        return text_block(clean(path))
+    if isinstance(block, FunctionCallResultBlock):
+        return ToolResultBlock(
+            id=block.id,
+            tool=block.tool,
+            result=clean(str(block.result)),
+            is_error=bool(getattr(block, "is_error", False)),
+        )
+    if isinstance(block, FunctionCallBlock):
+        return FunctionCallBlock(
+            id=block.id, arguments=deep(dict(block.arguments)), name=block.name, tool=block.tool
+        )
+    return text_block(clean(block_text(block)))
 
 
 def function_call_block(call: ToolCall, spec: ToolSpec | None = None) -> FunctionCallBlock:
