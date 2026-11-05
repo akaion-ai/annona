@@ -32,12 +32,14 @@ from runner.capability.backends import (
     OpenAICompatibleBackend,
 )
 from runner.kernel.errors import ConfigurationError
+from runner.kernel.ports import ContentModel
 from runner.kernel.types import SensitivityClass, Subject, ToolCall
 from runner.memory.index import roots
 from runner.placement.engine import PlacementDecisionEngine
 from runner.placement.registry import SubstrateRegistry, http_prober
 from runner.placement.router import RoutingBackend
 from runner.policy.classifier import PolicyClassifier, WorkingSet
+from runner.policy.fingerprint import policy_fingerprint
 from runner.policy.gate import DefaultDenyGate
 from runner.policy.loader import default_policy, load_policy
 from runner.policy.models import Policy, Substrate
@@ -355,6 +357,7 @@ class Enforcement:
         fsync: bool = True,
         secrets: Mapping[str, str] | None = None,
         subject: Subject | None = None,
+        content_model: ContentModel | None = None,
     ) -> Enforcement:
         """Assemble a perimeter for one run.
 
@@ -374,6 +377,9 @@ class Enforcement:
             subject: Who asked, as proven by an identity provider. The policy is
                 narrowed to what applies to them (``Policy.for_subject``) before
                 anything else is built, and every ledger entry carries them.
+            content_model: A learned judge of what text says (e.g. a Iovis
+                endpoint), consulted on top of the policy's paths and patterns.
+                It can only raise a class; a failure counts as restricted.
         """
         if policy is None:
             path = Path(policy_file) if policy_file else policy_path()
@@ -387,11 +393,12 @@ class Enforcement:
                     "only the local runtime. Run `annona init` to write one."
                 )
 
+        fingerprint = policy_fingerprint(policy)
         who = subject or Subject()
         who = Subject(who.id, policy.groups_of(who), who.via)
         policy = policy.for_subject(who)
 
-        classifier = PolicyClassifier(policy)
+        classifier = PolicyClassifier(policy, content_model)
         # The floor is the policy's, not this constructor's. `WorkingSet()`
         # defaults to PUBLIC, so until now a policy declaring `internal` as
         # its default class was quietly ignored and every run started at the
@@ -408,6 +415,15 @@ class Enforcement:
         if ledger_path is None:
             ledger_path = policy_path().parent / "ledger.jsonl"
         ledger = Ledger(ledger_path, run_id=run_id, fsync=fsync, subject=who)
+        # The first line of every run names the policy it runs under, so an
+        # auditor can re-derive each decision below from the ledger and the
+        # policy file alone (`annona audit --compliance`).
+        ledger.record(
+            "policy",
+            outcome="cleared",
+            klass=working_set.klass,
+            detail={"fingerprint": fingerprint},
+        )
 
         if backends is None:
             built: dict[str, Any] = {}

@@ -1,0 +1,38 @@
+\section{Setting and threat model}
+\label{sec:threat}
+
+\paragraph{Setting.} A daemon runs on the machine that holds the organisation's data and
+executes agent runs, each a loop of inference steps and tool calls over a growing transcript.
+It knows a set of substrates where steps can run. Each substrate has a jurisdiction, a cost, a
+quality score and a ceiling $\maxc(s) \in \{\pub \prec \inte \prec \res\}$, the most sensitive
+class it may receive. A typical deployment has an on-premises GPU (\res), a private EU cluster
+(\inte) and a frontier API (\pub).
+
+\paragraph{Adversaries.} We consider three.
+\begin{itemize}
+  \item \textbf{The substrate.} A provider, or anyone with access to what it receives, learns
+    everything sent to it. The confidentiality goal is that material of class $c$ reaches no
+    substrate whose ceiling is below $c$.
+  \item \textbf{The plan.} The agent's model can be manipulated by injected content or can
+    simply make mistakes. It may request any available tool with any arguments in any order,
+    including network tools with sensitive material in their arguments. We treat it as
+    adversarial within the set of tools it is given.
+  \item \textbf{A faulty or modified record.} The runtime may contain bugs, and a person with
+    write access to the ledger may edit, delete, reorder, truncate or rewrite entries. The
+    auditor should detect both cases from the files.
+\end{itemize}
+
+\paragraph{Trust assumptions.} We trust the author of the policy, the local substrate and host,
+and the code of the tools; a tool that sends data through an undeclared channel is out of
+scope. For the audit, we assume the ledger writer records each decision truthfully. A writer
+that misbehaves and records consistently would pass every check we propose, and removing this
+assumption requires attestation of the writer.
+
+The classifier is not assumed to be correct. Path and pattern rules miss material stored in
+unexpected places, and a content model has a miss rate. The analysis in
+\cref{sec:guarantees} makes that miss rate the only term in the leak bound.
+
+\begin{definition}[Placement safety]
+A run is \emph{placement-safe} if no substrate $s$ receives, in a prompt, a tool argument or a
+brief, material derived from a source of true class $c$ with $c \succ \maxc(s)$.
+\end{definition}

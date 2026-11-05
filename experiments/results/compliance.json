@@ -1,0 +1,67 @@
+{
+  "experiment": "E3 placement compliance under injected faults",
+  "params": {
+    "n": 150,
+    "seeds": 3,
+    "misfile": 0.2,
+    "local_down": 0.25
+  },
+  "results": {
+    "none": {
+      "leak_rate": 0.16666666666666666,
+      "entries_audited": 2626,
+      "violations": {},
+      "detected": false
+    },
+    "failover-widening": {
+      "leak_rate": 0.41333333333333333,
+      "entries_audited": 2700,
+      "violations": {
+        "sound": 74
+      },
+      "detected": true
+    },
+    "stale-class": {
+      "leak_rate": 1.0,
+      "entries_audited": 2700,
+      "violations": {
+        "monotone": 550
+      },
+      "detected": true
+    },
+    "inverted-preference": {
+      "leak_rate": 0.16666666666666666,
+      "entries_audited": 2626,
+      "violations": {
+        "optimal": 799
+      },
+      "detected": true
+    },
+    "spurious-hold": {
+      "leak_rate": 0.16666666666666666,
+      "entries_audited": 2450,
+      "violations": {
+        "hold-justified": 88
+      },
+      "detected": true
+    },
+    "policy-drift": {
+      "leak_rate": 0.41333333333333333,
+      "entries_audited": 2700,
+      "violations": {
+        "bound": 1800,
+        "sound": 74,
+        "optimal": 176
+      },
+      "detected": true
+    },
+    "egress-ceiling-off": {
+      "leak_rate": 0.7533333333333333,
+      "entries_audited": 2626,
+      "violations": {
+        "egress": 238
+      },
+      "detected": true
+    }
+  }
+}

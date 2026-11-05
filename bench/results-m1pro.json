@@ -1,0 +1,111 @@
+{
+  "qwen2.5:3b": {
+    "throughput": {
+      "decode_tok_s": 59.1,
+      "prefill_tok_s": 2836.8
+    },
+    "tiers": {
+      "easy": {
+        "ok": 20,
+        "no_call": 0,
+        "wrong_tool": 0,
+        "bad_args": 0,
+        "total": 20,
+        "success_rate": 100.0,
+        "share_of_errors_that_are_args": null,
+        "share_of_errors_that_are_intent": null
+      },
+      "hard": {
+        "ok": 11,
+        "no_call": 5,
+        "wrong_tool": 4,
+        "bad_args": 0,
+        "total": 20,
+        "success_rate": 55.0,
+        "share_of_errors_that_are_args": 0.0,
+        "share_of_errors_that_are_intent": 100.0
+      }
+    },
+    "failures": {
+      "easy": [],
+      "hard": [
+        "document_reader -> no_call: (none) ",
+        "document_reader -> no_call: (none) ",
+        "invoice_lookup -> no_call: (none) ",
+        "invoice_lookup -> no_call: (none) ",
+        "invoice_lookup -> no_call: (none) ",
+        "search_vault -> wrong_tool: note_create {\"since_iso\": \"2026-01-01T00:00:00Z\"}",
+        "search_vault -> wrong_tool: note_create {\"since_iso\": \"2026-01-01T00:00:00Z\"}",
+        "search_vault -> wrong_tool: note_create {\"query\": \"recent notes about the test run since January\"}",
+        "search_vault -> wrong_tool: note_create {\"since_iso\": \"2026-01-01T00:00:00Z\", \"top_k\": 3}"
+      ]
+    },
+    "wall_seconds": 56.2
+  },
+  "granite4:tiny-h": {
+    "throughput": {
+      "decode_tok_s": 41.8,
+      "prefill_tok_s": 311.4
+    },
+    "tiers": {
+      "easy": {
+        "ok": 20,
+        "no_call": 0,
+        "wrong_tool": 0,
+        "bad_args": 0,
+        "total": 20,
+        "success_rate": 100.0,
+        "share_of_errors_that_are_args": null,
+        "share_of_errors_that_are_intent": null
+      },
+      "hard": {
+        "ok": 20,
+        "no_call": 0,
+        "wrong_tool": 0,
+        "bad_args": 0,
+        "total": 20,
+        "success_rate": 100.0,
+        "share_of_errors_that_are_args": null,
+        "share_of_errors_that_are_intent": null
+      }
+    },
+    "failures": {
+      "easy": [],
+      "hard": []
+    },
+    "wall_seconds": 121.7
+  },
+  "qwen2.5:14b": {
+    "throughput": {
+      "decode_tok_s": 13.7,
+      "prefill_tok_s": 845.4
+    },
+    "tiers": {
+      "easy": {
+        "ok": 20,
+        "no_call": 0,
+        "wrong_tool": 0,
+        "bad_args": 0,
+        "total": 20,
+        "success_rate": 100.0,
+        "share_of_errors_that_are_args": null,
+        "share_of_errors_that_are_intent": null
+      },
+      "hard": {
+        "ok": 20,
+        "no_call": 0,
+        "wrong_tool": 0,
+        "bad_args": 0,
+        "total": 20,
+        "success_rate": 100.0,
+        "share_of_errors_that_are_args": null,
+        "share_of_errors_that_are_intent": null
+      }
+    },
+    "failures": {
+      "easy": [],
+      "hard": []
+    },
+    "wall_seconds": 323.1
+  }
+}

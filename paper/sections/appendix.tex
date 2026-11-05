@@ -1,0 +1,23 @@
+\section{Reproducing the results}
+\label{app:repro}
+
+{\small\begin{tabular}{@{}l l@{}}
+\toprule
+Result & Command \\
+\midrule
+E2, \cref{tab:leak} & \texttt{python -m experiments.leak} \\
+E3, \cref{tab:mutants} & \texttt{python -m experiments.compliance} \\
+E4, \cref{tab:tamper} & \texttt{python -m experiments.tamper} \\
+E5, \cref{tab:dojo} & \texttt{python -m experiments.dojo --suite banking --injections 4} \\
+E6, \cref{tab:overhead} & \texttt{python -m experiments.overhead} \\
+\bottomrule
+\end{tabular}}
+
+\medskip
+The test suite (958 tests, 11 import contracts checked mechanically) includes a reduced E3 so
+that the detection result cannot regress silently.
+
+\section{Author contributions}
+
+\textbf{Matteo Ballabio}: design, implementation of the perimeter, audit and experiments,
+writing. \textbf{Luca Cappellini}: \todo{complete}.

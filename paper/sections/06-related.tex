@@ -1,0 +1,61 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Information-flow control for agents.} In CaMeL~\citep{debenedetti2025camel}, a
+privileged model turns the trusted user query into a program, values carry capabilities, and
+policies are checked at every tool call. FIDES~\citep{costa2025fides} tracks confidentiality
+and integrity labels in the planner and can hide labelled values from it.
+f-secure~\citep{wu2024fsecure} separates planner, executor and security monitor under a formal
+IFC model. RTBAS~\citep{zhong2025rtbas} propagates labels using LM and attention-based screeners
+and asks the user when it is uncertain. Progent~\citep{shi2025progent} expresses
+least-privilege tool policies in a domain-specific language, Conseca~\citep{tsai2025conseca}
+generates contextual policies at run time, and GAAP~\citep{stanley2026gaap} enforces
+confidentiality in an execution environment with persistent data stores. \annona's
+default-deny, per-call enforcement over labels that only increase belongs to this line of
+work. These systems control which data reaches which tool or recipient and assume a single
+model provider, while \annona{} controls which substrate runs each inference, holds steps that
+cannot be placed, and produces records that a third party can check. The approaches can be
+combined, for example by running an IFC planner inside a step placed by \annona. Siddiqui et
+al.~\citep{siddiqui2024permissive} propose labelling a model's output according to the inputs
+that actually influenced it instead of the join of all inputs; this is the formal counterpart of
+our reclassified brief, whose soundness we do not establish.
+
+\paragraph{Privacy-aware delegation and routing.} In PAPILLON~\citep{li2025papillon}, a local
+model writes the prompt that an API model receives and composes the final answer locally. This
+is the same idea as our brief, applied to single queries, with leakage measured on real user
+data. CoGenesis~\citep{zhang2024cogenesis}, Minions~\citep{narayan2025minions} and
+PlanTwin~\citep{yu2026plantwin} split work between a local and a cloud model for privacy or
+cost reasons. PRISM~\citep{zhan2026prism} routes each prompt to local, cloud or collaborative
+execution based on entity-level sensitivity, using a soft gate. RouteLLM~\citep{ong2024routellm}
+and Hybrid LLM~\citep{ding2024hybrid} route each request according to cost and quality without
+considering sensitivity; our gateway baseline corresponds to their behaviour when an endpoint
+fails. None of these systems enforces a policy for each agent step, including tool calls, holds
+steps, or keeps a record for audit.
+
+\paragraph{Sanitisation.} Hide and Seek~\citep{chen2023hideandseek} anonymises prompts locally
+and restores the answer locally. Differentially private rewriting and
+perturbation~\citep{utpala2023dpprompt,tong2023inferdpt} provide formal guarantees at a cost in
+utility. LLMs can infer personal attributes from anonymised text~\citep{staab2024beyond} and
+reconstruct sanitised text~\citep{pang2025reconstruction}. For this reason \annona{} treats
+redaction as a declassification step controlled by the policy, with a list of sealed material
+that is never redacted, and not as a guarantee.
+
+\paragraph{Tamper-evident logs, attestation and verifiable inference.} Hash-chained audit logs
+date back to Schneier and Kelsey~\citep{schneier1999audit} and Crosby and
+Wallach~\citep{crosby2009tamper}, and our witness checkpoints follow Certificate Transparency.
+Recent work records agent actions in hash chains with external anchoring~\citep{bindschaedler2026flight}
+and defines dimensions of auditability for agents~\citep{nian2026auditable}. We record a
+different object, namely the placement decision together with its candidates and the class of
+the run, so that compliance with a data-location policy can be checked in addition to the
+sequence of actions. Proving that a step actually ran where the ledger says requires
+attestation, for example confidential GPUs~\citep{zhu2024hopper}, attested agent
+runtimes~\citep{abdollahi2026agentee}, transparency logs of server images~\citep{apple2024pcc}
+or proofs over model activations~\citep{ong2025toploc}.
+
+\paragraph{Measuring leakage.} Memorisation in language models is commonly measured with
+canaries~\citep{carlini2019secret}. AgentLeak~\citep{elyagoubi2026agentleak} shows that
+audits of the final output miss most leaks in multi-agent systems and measures leakage on
+internal channels, as we do at every egress point. AgentDojo~\citep{debenedetti2024agentdojo}
+and InjecAgent~\citep{zhan2024injecagent} measure prompt injection. Adaptive attacks defeat
+defences based on detecting injection~\citep{zhan2025adaptive}, which is one reason why
+\annona's guarantees do not rely on such detection.

@@ -53,10 +53,16 @@ Every one of these is a legitimate component and Annona uses several of them.
 None of them owns the sentence *"this step must run on that machine, and here is
 the record that it did."*
 
-> **The claim, stated so it can be falsified.** Annona is the first open-source
-> project in which the **placement of every inference and every tool call is a
-> policy decision, enforced by the runtime and verifiable after the fact**. If a
-> project that does this appears, this sentence is wrong and we will say so here.
+> **The claim, stated so it can be falsified.** None of Annona's mechanisms is new
+> on its own — default-deny policy over labelled data, local briefs, redaction,
+> hash-chained logs and canaries all have precedents
+> ([related work](../research/related-work.md)). The claim is the unit of control:
+> the **execution substrate of every inference and every tool call is the enforced
+> object of the policy**, a step no permitted substrate can take is **held rather
+> than degraded**, and every placement can be **re-derived by a third party from the
+> ledger and the policy alone** (`annona comply`). To our knowledge no published
+> system combines the three; if one appears, this sentence is wrong and we will say
+> so here.
 
 ---
 

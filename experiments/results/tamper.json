@@ -1,0 +1,56 @@
+{
+  "experiment": "E4 tamper evidence",
+  "entries": 360,
+  "results": {
+    "byte-flip": {
+      "trials": 360,
+      "detected": 360,
+      "rate": 1.0,
+      "located_at_edit": 360
+    },
+    "delete": {
+      "trials": 360,
+      "detected": 359,
+      "rate": 0.9972,
+      "located_at_edit": 359
+    },
+    "edit-and-rechain": {
+      "trials": 359,
+      "detected": 0,
+      "rate": 0.0,
+      "located_at_edit": 0
+    },
+    "field-edit": {
+      "trials": 2520,
+      "detected": 2520,
+      "rate": 1.0,
+      "located_at_edit": 2520
+    },
+    "swap": {
+      "trials": 359,
+      "detected": 359,
+      "rate": 1.0,
+      "located_at_edit": 359
+    },
+    "truncate-tail": {
+      "trials": 359,
+      "detected": 0,
+      "rate": 0.0,
+      "located_at_edit": 0
+    }
+  },
+  "with_witness": {
+    "every_1": {
+      "truncate-tail": 1.0,
+      "edit-and-rechain": 1.0
+    },
+    "every_10": {
+      "truncate-tail": 1.0,
+      "edit-and-rechain": 1.0
+    },
+    "every_50": {
+      "truncate-tail": 0.9721,
+      "edit-and-rechain": 0.9721
+    }
+  }
+}
